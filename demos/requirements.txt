@@ -1,0 +1,21 @@
+# Core language + math
+numpy
+scipy
+
+# Plotting & visualization
+matplotlib
+
+# Physics simulation
+pybullet
+
+# Deep learning
+torch
+torchvision
+torchaudio
+
+# Interactive exploration
+jupyter
+notebook
+
+# Utilities
+tqdm
