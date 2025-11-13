@@ -32,28 +32,40 @@ class BulletPendulumEnv(BaseEnv):
     def __init__(self, gui: bool = True, seed: int = 0):
         super().__init__(gui=gui, seed=seed)
         _seed(seed)
-        cid = p.connect(p.GUI if gui else p.DIRECT)
-        p.setTimeStep(self.dt)
-        p.setGravity(0, 0, -9.81)
+        # create and store a physics client id so all PyBullet calls go to the same client
+        self._cid = p.connect(p.GUI if gui else p.DIRECT)
+        p.setTimeStep(self.dt, physicsClientId=self._cid)
+        p.setGravity(0, 0, -9.81, physicsClientId=self._cid)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        p.loadURDF("plane.urdf")
+        # keep reference to loaded plane for clarity
+        self.plane = p.loadURDF("plane.urdf", physicsClientId=self._cid)
+        # If running with GUI, position the debug camera to look at the scene
+        if gui:
+            try:
+                # distance, yaw, pitch, target
+                p.resetDebugVisualizerCamera(cameraDistance=3.0, cameraYaw=60, cameraPitch=-30, cameraTargetPosition=[0, 0, 1.0], physicsClientId=self._cid)
+            except Exception:
+                pass
 
-        # Create a simple pendulum via two bodies and a revolute joint
+        # We'll represent the pendulum using two visible spheres (pivot and bob)
+        # and update the bob position each step according to the analytic state.
         self.base = p.createMultiBody(baseMass=0, baseCollisionShapeIndex=-1, baseVisualShapeIndex=-1)
         link_len = 1.0
-        link_col = p.createCollisionShape(p.GEOM_CAPSULE, radius=0.03, height=link_len)
-        link_vis = p.createVisualShape(p.GEOM_CAPSULE, radius=0.03, length=link_len, rgbaColor=[0.2, 0.4, 0.8, 1.0])
-        self.pend = p.createMultiBody(
-            baseMass=1.0,
-            baseCollisionShapeIndex=link_col,
-            baseVisualShapeIndex=link_vis,
-            basePosition=[0, 0, 1.0],
-        )
-        # Constrain at top
-        p.createConstraint(self.pend, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0, 0, 1.0])
-        # Add a revolute joint around X-axis at top (simulated via torque at base orientation)
+        # small spheres for pivot and bob
+        pivot_vis = p.createVisualShape(p.GEOM_SPHERE, radius=0.05, rgbaColor=[0.1, 0.1, 0.1, 1.0], physicsClientId=self._cid)
+        bob_vis = p.createVisualShape(p.GEOM_SPHERE, radius=0.08, rgbaColor=[0.2, 0.4, 0.8, 1.0], physicsClientId=self._cid)
+        try:
+            self.pivot_vis = p.createMultiBody(baseMass=0.0, baseVisualShapeIndex=pivot_vis, basePosition=[0, 0, 1.0], physicsClientId=self._cid)
+            self.bob_vis = p.createMultiBody(baseMass=0.0, baseVisualShapeIndex=bob_vis, basePosition=[0, 0, 1.0 - link_len], physicsClientId=self._cid)
+        except Exception:
+            # fallback: mark visuals None
+            self.pivot_vis = None
+            self.bob_vis = None
+        # Keep analytic dims
         self.observation_dim = 2
         self.action_dim = 1
+
+        # initial visuals already set above (pivot_vis / bob_vis)
 
     def reset(self, randomize: bool = True) -> Tuple[float, float]:
         # Pendulum angle stored via base orientation pitch around Y for simplicity
@@ -75,6 +87,23 @@ class BulletPendulumEnv(BaseEnv):
         theta = ((theta + theta_dot * self.dt + math.pi) % (2 * math.pi)) - math.pi
         self._state = np.array([theta, theta_dot], dtype=np.float32)
 
+        # Update pybullet visuals to reflect the analytic pendulum state (if GUI connected)
+        try:
+            # Bob position in world frame: pivot at (0,0,1.0); pendulum lies in X-Z plane
+            L = 1.0
+            x = L * math.sin(theta)
+            z = 1.0 - L * math.cos(theta)
+            if getattr(self, 'pivot_vis', None) is not None:
+                p.resetBasePositionAndOrientation(self.pivot_vis, [0, 0, 1.0], p.getQuaternionFromEuler([0, 0, 0]))
+            if getattr(self, 'bob_vis', None) is not None:
+                p.resetBasePositionAndOrientation(self.bob_vis, [float(x), 0.0, float(z)], p.getQuaternionFromEuler([0, 0, 0]))
+            try:
+                p.stepSimulation()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         reward = - (theta ** 2 + 0.1 * (theta_dot ** 2) + 0.01 * (tau ** 2))
         done = abs(theta) > math.pi  # never triggers with wrap; kept for API symmetry
         info = {}
@@ -85,10 +114,32 @@ class BulletDoublePendulumEnv(BaseEnv):
     def __init__(self, gui: bool = True, seed: int = 0):
         super().__init__(gui=gui, seed=seed)
         _seed(seed)
-        p.connect(p.GUI if gui else p.DIRECT)
-        p.setTimeStep(self.dt)
+        self._cid = p.connect(p.GUI if gui else p.DIRECT)
+        p.setTimeStep(self.dt, physicsClientId=self._cid)
         self.observation_dim = 4
         self.action_dim = 2
+        # Create simple visual representations for the two links so GUI shows something
+        try:
+            link_len = 1.0
+            link_col = p.createCollisionShape(p.GEOM_CAPSULE, radius=0.03, height=link_len, physicsClientId=self._cid)
+            link_vis1 = p.createVisualShape(p.GEOM_CAPSULE, radius=0.03, length=link_len, rgbaColor=[0.8, 0.3, 0.3, 1.0], physicsClientId=self._cid)
+            link_vis2 = p.createVisualShape(p.GEOM_CAPSULE, radius=0.03, length=link_len, rgbaColor=[0.3, 0.8, 0.3, 1.0], physicsClientId=self._cid)
+            # place both at base height; we'll rotate them in step()
+            self.link1 = p.createMultiBody(baseMass=1.0, baseCollisionShapeIndex=link_col, baseVisualShapeIndex=link_vis1, basePosition=[0, 0, 1.0], physicsClientId=self._cid)
+            self.link2 = p.createMultiBody(baseMass=1.0, baseCollisionShapeIndex=link_col, baseVisualShapeIndex=link_vis2, basePosition=[0, 0, 1.0], physicsClientId=self._cid)
+            q = p.getQuaternionFromEuler([0.0, 0.0, 0.0])
+            p.resetBasePositionAndOrientation(self.link1, [0, 0, 1.0], q, physicsClientId=self._cid)
+            p.resetBasePositionAndOrientation(self.link2, [0, 0, 1.0], q, physicsClientId=self._cid)
+        except Exception:
+            # If pybullet GUI not available or creation fails, ignore — env still works headless
+            self.link1 = None
+            self.link2 = None
+        # Set camera when GUI is enabled
+        if gui:
+            try:
+                p.resetDebugVisualizerCamera(cameraDistance=3.0, cameraYaw=60, cameraPitch=-30, cameraTargetPosition=[0, 0, 1.0], physicsClientId=self._cid)
+            except Exception:
+                pass
 
     def reset(self, randomize: bool = True):
         th1 = np.random.uniform(-math.pi, math.pi) if randomize else 0.2
@@ -122,6 +173,21 @@ class BulletDoublePendulumEnv(BaseEnv):
         th2 = ((th2 + dth2 * self.dt + math.pi) % (2 * math.pi)) - math.pi
         self._s = np.array([th1, th2, dth1, dth2], dtype=np.float32)
 
+        # Update visuals for links if they exist
+        try:
+            if getattr(self, 'link1', None) is not None:
+                q1 = p.getQuaternionFromEuler([0.0, float(th1), 0.0])
+                p.resetBasePositionAndOrientation(self.link1, [0, 0, 1.0], q1, physicsClientId=self._cid)
+            if getattr(self, 'link2', None) is not None:
+                q2 = p.getQuaternionFromEuler([0.0, float(th2), 0.0])
+                p.resetBasePositionAndOrientation(self.link2, [0, 0, 1.0], q2, physicsClientId=self._cid)
+            try:
+                p.stepSimulation(physicsClientId=self._cid)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         reward = - (th1 ** 2 + th2 ** 2 + 0.1 * (dth1 ** 2 + dth2 ** 2) + 0.01 * (tau[0] ** 2 + tau[1] ** 2))
         done = False
         info = {}
@@ -132,8 +198,8 @@ class BulletHopperEnv(BaseEnv):
     def __init__(self, gui: bool = True, seed: int = 0):
         super().__init__(gui=gui, seed=seed)
         _seed(seed)
-        p.connect(p.GUI if gui else p.DIRECT)
-        p.setTimeStep(self.dt)
+        self._cid = p.connect(p.GUI if gui else p.DIRECT)
+        p.setTimeStep(self.dt, physicsClientId=self._cid)
         self.observation_dim = 16
         self.action_dim = 4
 

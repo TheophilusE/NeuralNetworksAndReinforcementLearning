@@ -112,5 +112,5 @@ def run_pd_demo(
 
 
 if __name__ == "__main__":
-    p.connect(p.DIRECT)  # Defensive: ensure no leak if env GUI fails
+    # Run demo (env will create its own PyBullet client)
     res = run_pd_demo(gui=True, sleep_gui=False)
