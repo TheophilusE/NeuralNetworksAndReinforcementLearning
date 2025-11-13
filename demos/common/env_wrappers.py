@@ -72,6 +72,24 @@ class BulletPendulumEnv(BaseEnv):
         theta = np.random.uniform(-math.pi, math.pi) if randomize else 0.1
         theta_dot = 0.0
         self._state = np.array([theta, theta_dot], dtype=np.float32)
+        # update visuals to the reset state immediately
+        try:
+            # place pivot and bob according to theta
+            L = 1.0
+            x = L * math.sin(theta)
+            z = 1.0 - L * math.cos(theta)
+            if getattr(self, 'pivot_vis', None) is not None:
+                p.resetBasePositionAndOrientation(self.pivot_vis, [0, 0, 1.0], p.getQuaternionFromEuler([0, 0, 0]), physicsClientId=self._cid)
+            if getattr(self, 'bob_vis', None) is not None:
+                p.resetBasePositionAndOrientation(self.bob_vis, [float(x), 0.0, float(z)], p.getQuaternionFromEuler([0, 0, 0]), physicsClientId=self._cid)
+            # setup debug text id placeholder
+            self._debug_text_id = None
+            try:
+                p.stepSimulation(physicsClientId=self._cid)
+            except Exception:
+                pass
+        except Exception:
+            pass
         return tuple(self._state)
 
     def step(self, tau: float):
@@ -94,11 +112,20 @@ class BulletPendulumEnv(BaseEnv):
             x = L * math.sin(theta)
             z = 1.0 - L * math.cos(theta)
             if getattr(self, 'pivot_vis', None) is not None:
-                p.resetBasePositionAndOrientation(self.pivot_vis, [0, 0, 1.0], p.getQuaternionFromEuler([0, 0, 0]))
+                p.resetBasePositionAndOrientation(self.pivot_vis, [0, 0, 1.0], p.getQuaternionFromEuler([0, 0, 0]), physicsClientId=self._cid)
             if getattr(self, 'bob_vis', None) is not None:
-                p.resetBasePositionAndOrientation(self.bob_vis, [float(x), 0.0, float(z)], p.getQuaternionFromEuler([0, 0, 0]))
+                p.resetBasePositionAndOrientation(self.bob_vis, [float(x), 0.0, float(z)], p.getQuaternionFromEuler([0, 0, 0]), physicsClientId=self._cid)
+            # update on-screen debug text showing theta and theta_dot
             try:
-                p.stepSimulation()
+                txt = f"theta={theta:.3f}\nota_dot={theta_dot:.3f}"
+                if getattr(self, '_debug_text_id', None) is None:
+                    self._debug_text_id = p.addUserDebugText(txt, [0.0, -0.5, 1.8], textColorRGB=[1, 1, 1], textSize=1.2, physicsClientId=self._cid)
+                else:
+                    p.addUserDebugText(txt, [0.0, -0.5, 1.8], textColorRGB=[1, 1, 1], textSize=1.2, replaceItemUniqueId=self._debug_text_id, physicsClientId=self._cid)
+            except Exception:
+                pass
+            try:
+                p.stepSimulation(physicsClientId=self._cid)
             except Exception:
                 pass
         except Exception:
@@ -176,11 +203,30 @@ class BulletDoublePendulumEnv(BaseEnv):
         # Update visuals for links if they exist
         try:
             if getattr(self, 'link1', None) is not None:
+                # compute end-to-end positions: link1 pivot at (0,0,1.0)
+                L1 = 1.0
+                x1 = L1 * math.sin(th1)
+                z1 = 1.0 - L1 * math.cos(th1)
+                center1 = [(0.0 + x1) / 2.0, 0.0, (1.0 + z1) / 2.0]
                 q1 = p.getQuaternionFromEuler([0.0, float(th1), 0.0])
-                p.resetBasePositionAndOrientation(self.link1, [0, 0, 1.0], q1, physicsClientId=self._cid)
+                p.resetBasePositionAndOrientation(self.link1, center1, q1, physicsClientId=self._cid)
             if getattr(self, 'link2', None) is not None:
+                # attach link2 base at tip of link1 (x1, z1) and compute its tip
+                L2 = 1.0
+                x2_tip = x1 + L2 * math.sin(th2)
+                z2_tip = z1 - L2 * math.cos(th2)
+                center2 = [(x1 + x2_tip) / 2.0, 0.0, (z1 + z2_tip) / 2.0]
                 q2 = p.getQuaternionFromEuler([0.0, float(th2), 0.0])
-                p.resetBasePositionAndOrientation(self.link2, [0, 0, 1.0], q2, physicsClientId=self._cid)
+                p.resetBasePositionAndOrientation(self.link2, center2, q2, physicsClientId=self._cid)
+            # update on-screen debug text showing angles
+            try:
+                txt = f"th1={th1:.3f} th2={th2:.3f}"
+                if getattr(self, '_debug_text_id', None) is None:
+                    self._debug_text_id = p.addUserDebugText(txt, [0.0, -0.5, 1.9], textColorRGB=[1, 1, 1], textSize=1.2, physicsClientId=self._cid)
+                else:
+                    p.addUserDebugText(txt, [0.0, -0.5, 1.9], textColorRGB=[1, 1, 1], textSize=1.2, replaceItemUniqueId=self._debug_text_id, physicsClientId=self._cid)
+            except Exception:
+                pass
             try:
                 p.stepSimulation(physicsClientId=self._cid)
             except Exception:
