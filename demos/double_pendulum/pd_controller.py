@@ -7,6 +7,8 @@ import numpy as np
 
 from demos.common.env_wrappers import BulletDoublePendulumEnv
 from demos.common.plotting import TrajectoryLogger, plot_timeseries
+import matplotlib.pyplot as plt
+from demos.common.plotting import init_realtime_plot, update_realtime_plot
 
 
 @dataclass
@@ -44,20 +46,45 @@ class PDController2:
         return (a + math.pi) % (2 * math.pi) - math.pi
 
 
-def run_pd_double_demo(steps: int = 3000, gui: bool = True, seed: int = 7) -> Dict[str, Any]:
+def run_pd_double_demo(
+    steps: int = 3000,
+    gui: bool = True,
+    seed: int = 7,
+    realtime: bool = True,
+    window_secs: float = 5.0,
+) -> Dict[str, Any]:
     env = BulletDoublePendulumEnv(gui=gui, seed=seed)
     ctrl = PDController2(PDGains2(), PDConfig2())
 
-    traj = TrajectoryLogger(keys=["t", "th1", "th2", "dth1", "dth2", "tau1", "tau2", "reward"], capacity=steps + 1)
+    window_steps = max(10, int(window_secs / env.dt))
+    traj = TrajectoryLogger(keys=["t", "th1", "th2", "dth1", "dth2", "tau1", "tau2", "reward"], capacity=10 * window_steps)
     s = env.reset(randomize=True)
-    for t in range(steps):
-        tau1, tau2 = ctrl.act(s)
-        s, r, d, info = env.step(np.array([tau1, tau2]))
-        th1, th2, dth1, dth2 = s
-        traj.add(t=t, th1=th1, th2=th2, dth1=dth1, dth2=dth2, tau1=tau1, tau2=tau2, reward=r)
-        if d:
-            break
-    env.close()
+    t = 0
+    if realtime:
+        fig, ax, lines, x_axis = init_realtime_plot(["th1", "th2", "tau1", "tau2"], window=window_steps, title="Double Pendulum PD (realtime)")
+
+    try:
+        while True:
+            tau1, tau2 = ctrl.act(s)
+            s, r, d, info = env.step(np.array([tau1, tau2]))
+            th1, th2, dth1, dth2 = s
+            traj.add(t=t, th1=th1, th2=th2, dth1=dth1, dth2=dth2, tau1=tau1, tau2=tau2, reward=r)
+
+            if realtime:
+                series = traj.to_series(["th1", "th2", "tau1", "tau2"])
+                update_realtime_plot(lines, x_axis, series, window=window_steps)
+                plt.pause(env.dt)
+
+            t += 1
+            if d or t % steps == 0:
+                s = env.reset(randomize=True)
+                continue
+
+    except KeyboardInterrupt:
+        pass
+
+    finally:
+        env.close()
 
     fig = plot_timeseries(
         traj.to_series(["th1", "th2", "dth1", "dth2", "tau1", "tau2"]),

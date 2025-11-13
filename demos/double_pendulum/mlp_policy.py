@@ -7,7 +7,13 @@ import torch
 
 from demos.common.env_wrappers import BulletDoublePendulumEnv
 from demos.common.model_utils import MLPPolicy, load_policy, seed_everything
-from demos.common.plotting import TrajectoryLogger, plot_timeseries
+import matplotlib.pyplot as plt
+from demos.common.plotting import (
+    TrajectoryLogger,
+    plot_timeseries,
+    init_realtime_plot,
+    update_realtime_plot,
+)
 
 
 @dataclass
@@ -24,6 +30,8 @@ def run_double_inference(
     sleep_gui: bool = False,
     ckpt_path: Optional[str] = None,
     policy_cfg: Policy2Config = Policy2Config(),
+    realtime: bool = True,
+    window_secs: float = 5.0,
 ) -> Dict[str, Any]:
     seed_everything(seed)
     env = BulletDoublePendulumEnv(gui=gui, seed=seed)
@@ -36,23 +44,39 @@ def run_double_inference(
     else:
         policy = load_policy(ckpt_path, obs_dim, act_dim, policy_cfg.hidden_sizes, policy_cfg.activation)
 
-    traj = TrajectoryLogger(keys=["t", "th1", "th2", "dth1", "dth2", "tau1", "tau2", "reward"], capacity=steps + 1)
+    window_steps = max(10, int(window_secs / env.dt))
+    traj = TrajectoryLogger(keys=["t", "th1", "th2", "dth1", "dth2", "tau1", "tau2", "reward"], capacity=10 * window_steps)
     s = env.reset(randomize=True)
-    for t in range(steps):
-        with torch.no_grad():
-            obs = torch.tensor(s, dtype=torch.float32).unsqueeze(0)
-            tau = policy(obs).squeeze(0).cpu().numpy()
-        tau = np.clip(tau, -policy_cfg.max_torque, policy_cfg.max_torque)
-        s, r, d, info = env.step(tau)
-        th1, th2, dth1, dth2 = s
-        traj.add(t=t, th1=th1, th2=th2, dth1=dth1, dth2=dth2, tau1=float(tau[0]), tau2=float(tau[1]), reward=r)
-        if sleep_gui and gui:
-            import time
-            time.sleep(env.dt)
-        if d:
-            break
+    t = 0
+    if realtime:
+        fig, ax, lines, x_axis = init_realtime_plot(["th1", "th2", "tau1", "tau2"], window=window_steps, title="Double Pendulum MLP (realtime)")
 
-    env.close()
+    try:
+        while True:
+            with torch.no_grad():
+                obs = torch.tensor(s, dtype=torch.float32).unsqueeze(0)
+                tau = policy(obs).squeeze(0).cpu().numpy()
+            tau = np.clip(tau, -policy_cfg.max_torque, policy_cfg.max_torque)
+            s, r, d, info = env.step(tau)
+            th1, th2, dth1, dth2 = s
+            traj.add(t=t, th1=th1, th2=th2, dth1=dth1, dth2=dth2, tau1=float(tau[0]), tau2=float(tau[1]), reward=r)
+
+            if realtime:
+                series = traj.to_series(["th1", "th2", "tau1", "tau2"])
+                update_realtime_plot(lines, x_axis, series, window=window_steps)
+                plt.pause(env.dt if sleep_gui is False else env.dt)
+
+            t += 1
+            if d or t % steps == 0:
+                s = env.reset(randomize=True)
+                continue
+
+    except KeyboardInterrupt:
+        pass
+
+    finally:
+        env.close()
+
     fig = plot_timeseries(traj.to_series(["th1", "th2", "dth1", "dth2", "tau1", "tau2"]), title="Double Pendulum MLP Policy")
     return {"trajectory": traj, "figure": fig, "policy": policy}
 

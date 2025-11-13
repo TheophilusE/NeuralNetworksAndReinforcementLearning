@@ -9,7 +9,13 @@ import torch.nn as nn
 
 from demos.common.env_wrappers import BulletPendulumEnv
 from demos.common.model_utils import MLPPolicy, load_policy, save_policy, seed_everything
-from demos.common.plotting import TrajectoryLogger, plot_timeseries
+import matplotlib.pyplot as plt
+from demos.common.plotting import (
+    TrajectoryLogger,
+    plot_timeseries,
+    init_realtime_plot,
+    update_realtime_plot,
+)
 
 
 @dataclass
@@ -26,6 +32,8 @@ def run_inference(
     sleep_gui: bool = False,
     ckpt_path: Optional[str] = None,
     policy_cfg: PolicyConfig = PolicyConfig(),
+    realtime: bool = True,
+    window_secs: float = 5.0,
 ) -> Dict[str, Any]:
     seed_everything(seed)
     env = BulletPendulumEnv(gui=gui, seed=seed)
@@ -41,24 +49,45 @@ def run_inference(
         # This produces a usable policy without long RL training.
         policy = quick_pd_imitation(env, policy, epochs=20, batch_size=256)
 
-    traj = TrajectoryLogger(keys=["t", "theta", "theta_dot", "tau", "reward"], capacity=steps + 1)
+    window_steps = max(10, int(window_secs / env.dt))
+    traj = TrajectoryLogger(keys=["t", "theta", "theta_dot", "tau", "reward"], capacity=10 * window_steps)
 
     state = env.reset(randomize=True)
-    for t in range(steps):
-        theta, theta_dot = state
-        with torch.no_grad():
-            obs = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
-            tau = policy(obs).squeeze(0).cpu().numpy()[0]
-        tau = float(np.clip(tau, -policy_cfg.max_torque, policy_cfg.max_torque))
-        state, reward, done, info = env.step(tau)
+    t = 0
+    fig = None
+    if realtime:
+        fig, ax, lines, x_axis = init_realtime_plot(["theta", "theta_dot", "tau"], window=window_steps, title="Pendulum MLP Policy (realtime)")
 
-        traj.add(t=t, theta=theta, theta_dot=theta_dot, tau=tau, reward=reward)
-        if gui and sleep_gui:
-            time.sleep(env.dt)
-        if done:
-            break
+    try:
+        while True:
+            theta, theta_dot = state
+            with torch.no_grad():
+                obs = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+                tau = policy(obs).squeeze(0).cpu().numpy()[0]
+            tau = float(np.clip(tau, -policy_cfg.max_torque, policy_cfg.max_torque))
+            state, reward, done, info = env.step(tau)
 
-    env.close()
+            traj.add(t=t, theta=theta, theta_dot=theta_dot, tau=tau, reward=reward)
+
+            if realtime:
+                series = traj.to_series(["theta", "theta_dot", "tau"])
+                update_realtime_plot(lines, x_axis, series, window=window_steps)
+                plt.pause(env.dt if sleep_gui is False else env.dt)
+            else:
+                if gui and sleep_gui:
+                    time.sleep(env.dt)
+
+            t += 1
+            if done or t % steps == 0:
+                state = env.reset(randomize=True)
+                continue
+
+    except KeyboardInterrupt:
+        pass
+
+    finally:
+        env.close()
+
     fig = plot_timeseries(traj.to_series(["theta", "theta_dot", "tau"]), title="Pendulum MLP Policy", xlabel="Time (step)")
     return {"trajectory": traj, "figure": fig, "policy": policy}
 

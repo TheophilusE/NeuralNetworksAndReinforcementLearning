@@ -7,7 +7,13 @@ import torch
 
 from demos.common.env_wrappers import BulletHopperEnv
 from demos.common.model_utils import MLPPolicy, seed_everything
-from demos.common.plotting import TrajectoryLogger, plot_timeseries
+import matplotlib.pyplot as plt
+from demos.common.plotting import (
+    TrajectoryLogger,
+    plot_timeseries,
+    init_realtime_plot,
+    update_realtime_plot,
+)
 
 
 @dataclass
@@ -28,19 +34,37 @@ def run_hopper_demo(gui: bool = True, seed: int = 202, cfg: HopperCfg = HopperCf
     phase_policy = MLPPolicy(obs_dim, act_dim, hidden_sizes=cfg.hidden_sizes, activation=cfg.activation)
     phase_policy = quick_phase_imitation(env, phase_policy, epochs=20, batch=512)
 
-    traj = TrajectoryLogger(keys=["t", "x", "y", "vx", "vy", "reward"], capacity=cfg.steps + 1)
+    window_steps = max(10, int(5.0 / env.dt))
+    traj = TrajectoryLogger(keys=["t", "x", "y", "vx", "vy", "reward"], capacity=10 * window_steps)
     s = env.reset(randomize=True)
-    for t in range(cfg.steps):
-        with torch.no_grad():
-            a = phase_policy(torch.tensor(s, dtype=torch.float32).unsqueeze(0)).squeeze(0).cpu().numpy()
-        a = np.clip(a, -cfg.max_force, cfg.max_force)
-        s, r, d, info = env.step(a)
-        x, y, vx, vy = info.get("base_pos_vel", (0.0, 0.0, 0.0, 0.0))
-        traj.add(t=t, x=x, y=y, vx=vx, vy=vy, reward=r)
-        if d:
-            break
+    t = 0
+    fig = None
+    fig, ax, lines, x_axis = init_realtime_plot(["x", "vx", "reward"], window=window_steps, title="Hopper Demo (realtime)")
 
-    env.close()
+    try:
+        while True:
+            with torch.no_grad():
+                a = phase_policy(torch.tensor(s, dtype=torch.float32).unsqueeze(0)).squeeze(0).cpu().numpy()
+            a = np.clip(a, -cfg.max_force, cfg.max_force)
+            s, r, d, info = env.step(a)
+            x, y, vx, vy = info.get("base_pos_vel", (0.0, 0.0, 0.0, 0.0))
+            traj.add(t=t, x=x, y=y, vx=vx, vy=vy, reward=r)
+
+            series = traj.to_series(["x", "vx", "reward"])
+            update_realtime_plot(lines, x_axis, series, window=window_steps)
+            plt.pause(env.dt)
+
+            t += 1
+            if d or t % cfg.steps == 0:
+                s = env.reset(randomize=True)
+                continue
+
+    except KeyboardInterrupt:
+        pass
+
+    finally:
+        env.close()
+
     fig = plot_timeseries(traj.to_series(["x", "vx", "reward"]), title="Hopper Demo: forward progress & reward")
     return {"trajectory": traj, "figure": fig, "policy": phase_policy}
 

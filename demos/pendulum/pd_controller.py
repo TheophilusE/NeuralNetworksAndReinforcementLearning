@@ -9,7 +9,13 @@ import pybullet as p
 import pybullet_data
 
 from demos.common.env_wrappers import BulletPendulumEnv
-from demos.common.plotting import TrajectoryLogger, plot_timeseries
+import matplotlib.pyplot as plt
+from demos.common.plotting import (
+    TrajectoryLogger,
+    plot_timeseries,
+    init_realtime_plot,
+    update_realtime_plot,
+)
 
 
 @dataclass
@@ -51,43 +57,58 @@ def run_pd_demo(
     seed: int = 42,
     logging_interval: int = 1,
     sleep_gui: bool = False,
+    realtime: bool = True,
+    window_secs: float = 5.0,
 ) -> Dict[str, Any]:
     env = BulletPendulumEnv(gui=gui, seed=seed)
     ctrl = PDController(gains, cfg)
-    traj = TrajectoryLogger(
-        keys=["t", "theta", "theta_dot", "tau", "reward"],
-        capacity=steps + 1,
-    )
+    # We'll run perpetually (until Ctrl-C) and optionally show a realtime sliding timeline.
+    window_steps = max(10, int(window_secs / env.dt))
+    traj = TrajectoryLogger(keys=["t", "theta", "theta_dot", "tau", "reward"], capacity=10 * window_steps)
 
     state = env.reset(randomize=True)
-    for t in range(steps):
-        theta, theta_dot = state
-        tau = ctrl.act(theta, theta_dot)
-        state, reward, done, info = env.step(tau)
+    t = 0
+    fig = None
+    if realtime:
+        # prepare realtime figure
+        fig, ax, lines, x_axis = init_realtime_plot(["theta", "theta_dot", "tau"], window=window_steps, title="Pendulum PD Control (realtime)", xlabel="Time (steps)")
 
-        if t % logging_interval == 0:
-            traj.add(
-                t=t,
-                theta=theta,
-                theta_dot=theta_dot,
-                tau=tau,
-                reward=reward,
-            )
+    try:
+        while True:
+            theta, theta_dot = state
+            tau = ctrl.act(theta, theta_dot)
+            state, reward, done, info = env.step(tau)
 
-        if gui and sleep_gui:
-            time.sleep(env.dt)
-        if done:
-            break
+            if t % logging_interval == 0:
+                traj.add(t=t, theta=theta, theta_dot=theta_dot, tau=tau, reward=reward)
 
-    env.close()
+            # realtime plotting update
+            if realtime:
+                series = traj.to_series(["theta", "theta_dot", "tau"])
+                update_realtime_plot(lines, x_axis, series, window=window_steps)
+                # small pause to keep GUI responsive; prefer env.dt pacing
+                plt.pause(env.dt if sleep_gui is False else env.dt)
+            else:
+                if gui and sleep_gui:
+                    time.sleep(env.dt)
 
-    # Plot
-    fig = plot_timeseries(
-        series=traj.to_series(["theta", "theta_dot", "tau"]),
-        title="Pendulum PD Control: angle, angular velocity, torque",
-        xlabel="Time (step)",
-    )
-    return {"trajectory": traj, "figure": fig}
+            t += 1
+            # reset episode occasionally to introduce random initial conditions and keep controller 'stabilizing'
+            if done or t % steps == 0:
+                state = env.reset(randomize=True)
+                # continue running indefinitely
+                continue
+
+    except KeyboardInterrupt:
+        # Graceful exit on Ctrl-C
+        pass
+
+    finally:
+        env.close()
+
+    # final static figure for convenience
+    static_fig = plot_timeseries(series=traj.to_series(["theta", "theta_dot", "tau"]), title="Pendulum PD Control: angle, angular velocity, torque", xlabel="Time (step)")
+    return {"trajectory": traj, "figure": static_fig}
 
 
 if __name__ == "__main__":
