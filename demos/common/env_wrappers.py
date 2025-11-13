@@ -47,6 +47,48 @@ class BulletPendulumEnv(BaseEnv):
             except Exception:
                 pass
 
+        # Make the scene look like a small robotics lab: try to texture the plane and add benches/lights
+        try:
+            # Try to load a checker texture from pybullet_data
+            try:
+                tex = p.loadTexture("checker_grid.png", physicsClientId=self._cid)
+                p.changeVisualShape(self.plane, -1, textureUniqueId=tex, physicsClientId=self._cid)
+            except Exception:
+                # Fallback: tint the plane
+                try:
+                    p.changeVisualShape(self.plane, -1, rgbaColor=[0.85, 0.85, 0.85, 1.0], physicsClientId=self._cid)
+                except Exception:
+                    pass
+
+            # Add a couple of static benches/tables (boxes)
+            bench_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.6, 0.4, 0.05], physicsClientId=self._cid)
+            bench_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.6, 0.4, 0.05], rgbaColor=[0.45, 0.3, 0.2, 1.0], physicsClientId=self._cid)
+            self.bench1 = p.createMultiBody(baseMass=0.0, baseCollisionShapeIndex=bench_col, baseVisualShapeIndex=bench_vis, basePosition=[-1.0, -0.8, 0.4], physicsClientId=self._cid)
+            self.bench2 = p.createMultiBody(baseMass=0.0, baseCollisionShapeIndex=bench_col, baseVisualShapeIndex=bench_vis, basePosition=[1.0, -0.8, 0.4], physicsClientId=self._cid)
+
+            # Add an overhead lamp (thin cylinder) for visual flair
+            lamp_col = p.createCollisionShape(p.GEOM_CYLINDER, radius=0.05, height=0.02, physicsClientId=self._cid)
+            lamp_vis = p.createVisualShape(p.GEOM_CYLINDER, radius=0.05, length=0.02, rgbaColor=[1.0, 0.95, 0.7, 1.0], physicsClientId=self._cid)
+            self.lamp = p.createMultiBody(baseMass=0.0, baseCollisionShapeIndex=lamp_col, baseVisualShapeIndex=lamp_vis, basePosition=[0.0, 0.0, 2.2], physicsClientId=self._cid)
+
+            # Add a small equipment cube
+            cube_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.15, 0.15, 0.15], physicsClientId=self._cid)
+            cube_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.15, 0.15, 0.15], rgbaColor=[0.2, 0.6, 0.6, 1.0], physicsClientId=self._cid)
+            self.equip = p.createMultiBody(baseMass=0.0, baseCollisionShapeIndex=cube_col, baseVisualShapeIndex=cube_vis, basePosition=[-0.6, 0.8, 0.25], physicsClientId=self._cid)
+
+            # Draw simple grid lines on the floor for lab feeling
+            for i in range(-5, 6):
+                p.addUserDebugLine([i * 0.5, -2.5, 0.01], [i * 0.5, 2.5, 0.01], [0.5, 0.5, 0.5], 1.0, physicsClientId=self._cid)
+                p.addUserDebugLine([-2.5, i * 0.5, 0.01], [2.5, i * 0.5, 0.01], [0.5, 0.5, 0.5], 1.0, physicsClientId=self._cid)
+
+            # Coordinate axes at origin
+            p.addUserDebugLine([0, 0, 0.02], [0.5, 0, 0.02], [1, 0, 0], 2.0, physicsClientId=self._cid)
+            p.addUserDebugLine([0, 0, 0.02], [0, 0.5, 0.02], [0, 1, 0], 2.0, physicsClientId=self._cid)
+            p.addUserDebugLine([0, 0, 0.02], [0, 0, 0.7], [0, 0, 1], 2.0, physicsClientId=self._cid)
+        except Exception:
+            # Non-fatal: continue without decorations if anything fails
+            pass
+
         # We'll represent the pendulum using two visible spheres (pivot and bob)
         # and update the bob position each step according to the analytic state.
         self.base = p.createMultiBody(baseMass=0, baseCollisionShapeIndex=-1, baseVisualShapeIndex=-1)
