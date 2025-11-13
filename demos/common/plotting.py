@@ -49,8 +49,9 @@ def init_realtime_plot(keys: Sequence[str], window: int = 500, title: str = "", 
     fig, ax = plt.subplots(figsize=(10, 4))
     x_axis = np.arange(-window + 1, 1)
     lines = {}
+    # Ensure plotted data arrays are float dtype (np.nan is a float)
     for k in keys:
-        line, = ax.plot(x_axis, np.full_like(x_axis, np.nan), label=k)
+        line, = ax.plot(x_axis, np.full(x_axis.shape, np.nan, dtype=float), label=k)
         lines[k] = line
     ax.set_xlim(x_axis[0], x_axis[-1])
     ax.set_title(title)
@@ -79,7 +80,11 @@ def update_realtime_plot(lines: Dict[str, Any], x_axis: np.ndarray, series: Dict
         if v.size >= window:
             data = v[-window:]
         else:
-            data = np.concatenate([np.full(window - v.size, np.nan), v])
+            # Pad on the left with NaNs (float dtype) so concatenation yields float array
+            pad = np.full(window - v.size, np.nan, dtype=float)
+            data = np.concatenate([pad, v])
+        # Ensure data is float for plotting (avoids casting warnings)
+        data = np.asarray(data, dtype=float)
         # If line length differs, set new x and y data
         line.set_xdata(x_axis)
         line.set_ydata(data)
