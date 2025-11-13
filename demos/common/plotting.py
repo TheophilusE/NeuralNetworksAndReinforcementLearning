@@ -46,6 +46,11 @@ def init_realtime_plot(keys: Sequence[str], window: int = 500, title: str = "", 
     Returns (fig, ax, lines_dict, x_axis) where lines_dict maps key -> Line2D
     and x_axis is an array of x positions (relative steps: -window+1 ... 0).
     """
+    # Ensure interactive mode is enabled so windows appear when running scripts
+    try:
+        plt.ion()
+    except Exception:
+        pass
     fig, ax = plt.subplots(figsize=(10, 4))
     x_axis = np.arange(-window + 1, 1)
     lines = {}
@@ -59,8 +64,16 @@ def init_realtime_plot(keys: Sequence[str], window: int = 500, title: str = "", 
     ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    # draw once
-    fig.canvas.draw()
+    # draw once and show non-blocking
+    try:
+        fig.canvas.draw()
+        # fig.show() can be backend-dependent; use plt.show(non-blocking) where available
+        try:
+            fig.show()
+        except Exception:
+            plt.show(block=False)
+    except Exception:
+        pass
     return fig, ax, lines, x_axis
 
 
