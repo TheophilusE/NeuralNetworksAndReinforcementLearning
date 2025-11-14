@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import PendulumCanvas from './PendulumCanvas'
 import ThreeScene from './ThreeScene'
+import UIOverlay from './UIOverlay'
 
 type Mode = 'single' | 'double'
 type Controller = 'pid' | 'nn'
@@ -11,6 +11,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('single')
   const [controller, setController] = useState<Controller>('pid')
   const [state, setState] = useState<any>(null)
+  const [fps, setFps] = useState<number | undefined>(undefined)
 
   useEffect(() => {
     const sock = new WebSocket('ws://localhost:8000/ws')
@@ -43,37 +44,22 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <h1>NN & RL Lab</h1>
-      <div className="controls">
-        <label>
-          Mode:
-          <select value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
-            <option value="single">Single Pendulum</option>
-            <option value="double">Double Pendulum</option>
-          </select>
-        </label>
-        <label>
-          Controller:
-          <select value={controller} onChange={(e) => setController(e.target.value as Controller)}>
-            <option value="pid">PID</option>
-            <option value="nn">NN (demo)</option>
-          </select>
-        </label>
-        <button onClick={start} disabled={running}>
-          Start
-        </button>
-        <button onClick={stop} disabled={!running}>
-          Stop
-        </button>
-      </div>
-      <div style={{ display: 'flex', gap: 12 }}>
-        <ThreeScene state={state} />
-      </div>
-      <pre className="state">{JSON.stringify(state, null, 2)}</pre>
-      <div style={{ marginTop: 8 }}>
-        <button onClick={() => ws?.send(JSON.stringify({ action: 'train_start' }))}>Start Training</button>
-        <button onClick={() => ws?.send(JSON.stringify({ action: 'train_stop' }))}>Stop Training</button>
+    <div className="app" style={{ position: 'relative', height: '100vh' }}>
+      <ThreeScene state={state} onFps={(v: number) => setFps(v)} />
+      <UIOverlay
+        mode={mode}
+        controller={controller}
+        running={running}
+        onStart={() => start()}
+        onStop={() => stop()}
+        onTrainStart={() => ws?.send(JSON.stringify({ action: 'train_start' }))}
+        onTrainStop={() => ws?.send(JSON.stringify({ action: 'train_stop' }))}
+        onChangeMode={(m) => setMode(m)}
+        onChangeController={(c) => setController(c)}
+        fps={fps}
+      />
+      <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 30 }}>
+        <pre style={{ background: 'rgba(255,255,255,0.9)', padding: 8, borderRadius: 6 }}>{JSON.stringify(state, null, 2)}</pre>
       </div>
     </div>
   )

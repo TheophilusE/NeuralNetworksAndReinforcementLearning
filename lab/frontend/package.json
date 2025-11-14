@@ -10,7 +10,8 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "three": "^0.160.0"
+    "three": "^0.160.0",
+    "lil-gui": "^0.18.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
