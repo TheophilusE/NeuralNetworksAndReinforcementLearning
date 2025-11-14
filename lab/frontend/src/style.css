@@ -104,6 +104,30 @@ body {
 	width: 130px;
 }
 
+/* Camera icon buttons */
+.camera-panel .cam-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 38px;
+	height: 38px;
+	padding: 6px;
+	border-radius: 8px;
+	border: 1px solid rgba(6, 60, 160, 0.06);
+	background: #eef6ff;
+	color: #04243a;
+	cursor: pointer;
+}
+.camera-panel .cam-btn:hover {
+	background: #e6f9ff;
+}
+.camera-panel .cam-btn--active {
+	background: #d4ecff;
+	border-color: rgba(6, 60, 160, 0.14);
+	box-shadow: 0 6px 14px rgba(6, 60, 160, 0.05);
+}
+.camera-panel .cam-btn svg { display: block; }
+
 /* Custom styled select dropdown to avoid native dropdown flicker and allow full styling */
 .styled-select {
 	position: relative;

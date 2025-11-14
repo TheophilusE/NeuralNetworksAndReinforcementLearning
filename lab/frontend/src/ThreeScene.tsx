@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react'
-import StyledSelect from './StyledSelect'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
@@ -206,10 +205,76 @@ export default function ThreeScene({ state, onFps }: any) {
         controls.update()
     }, [cameraMode])
 
+    function CameraButton({ mode, title, svg }: { mode: 'orbit' | 'top' | 'side' | 'front' | 'follow'; title: string; svg: JSX.Element }) {
+        const active = cameraMode === mode
+        return (
+            <button
+                className={"cam-btn" + (active ? ' cam-btn--active' : '')}
+                aria-pressed={active}
+                title={title}
+                onClick={() => setCameraMode(mode)}
+            >
+                {svg}
+            </button>
+        )
+    }
+
     function CameraUI() {
         return (
             <div className="camera-panel" onPointerDown={(e) => e.stopPropagation()}>
-                <StyledSelect value={cameraMode} onChange={(v) => setCameraMode(v as any)} options={opts} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <CameraButton
+                        mode={'orbit'}
+                        title="Orbit"
+                        svg={(
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.6" />
+                                <circle cx="12" cy="8" r="1.2" fill="currentColor" />
+                            </svg>
+                        )}
+                    />
+                    <CameraButton
+                        mode={'top'}
+                        title="Top"
+                        svg={(
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="5" y="5" width="14" height="6" stroke="currentColor" strokeWidth="1.6" rx="1" />
+                                <rect x="8" y="13" width="8" height="6" stroke="currentColor" strokeWidth="1.6" rx="1" />
+                            </svg>
+                        )}
+                    />
+                    <CameraButton
+                        mode={'side'}
+                        title="Side"
+                        svg={(
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M4 12h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                                <circle cx="18" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
+                            </svg>
+                        )}
+                    />
+                    <CameraButton
+                        mode={'front'}
+                        title="Front"
+                        svg={(
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="4" y="6" width="16" height="12" stroke="currentColor" strokeWidth="1.6" rx="1" />
+                                <circle cx="12" cy="12" r="2" fill="currentColor" />
+                            </svg>
+                        )}
+                    />
+                    <CameraButton
+                        mode={'follow'}
+                        title="Follow"
+                        svg={(
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 3v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                                <path d="M12 18v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                                <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.6" />
+                            </svg>
+                        )}
+                    />
+                </div>
             </div>
         )
     }
