@@ -65,68 +65,107 @@ export default function ThreeScene({ state, onFps }: any) {
         scene.add(rod2)
         scene.add(joint2)
 
+        // helper: align a cylinder mesh between two 3D points
+        const tmpV1 = new THREE.Vector3()
+        const tmpV2 = new THREE.Vector3()
+        const tmpDir = new THREE.Vector3()
+        const up = new THREE.Vector3(0, 1, 0) // cylinder's default axis
+        function alignCylinderBetween(rod: THREE.Mesh, a: [number, number, number] | THREE.Vector3, b: [number, number, number] | THREE.Vector3, initialLength = 1.0) {
+            // convert inputs to Vector3
+            tmpV1.set((a as any)[0], (a as any)[1], (a as any)[2])
+            tmpV2.set((b as any)[0], (b as any)[1], (b as any)[2])
+            tmpDir.subVectors(tmpV2, tmpV1)
+            const len = tmpDir.length()
+            if (len <= 1e-6) {
+                rod.visible = false
+                return
+            }
+            // position at midpoint
+            rod.position.copy(tmpV1).add(tmpV2).multiplyScalar(0.5)
+            // scale the cylinder to match length (height axis is Y)
+            rod.scale.set(1, len / initialLength, 1)
+            // compute quaternion that rotates up -> dir
+            const q = new THREE.Quaternion().setFromUnitVectors(up, tmpDir.clone().normalize())
+            rod.quaternion.copy(q)
+            rod.visible = true
+        }
+
         let lastFpsTime = performance.now()
         let frames = 0
 
         function updateFromState() {
             const s = stateRef.current
             if (!s) return
-            // prefer world positions from pybullet if available
-            if (s.pos2 || s.pos1) {
+
+            // Base pivot (matches pybullet basePosition used in backend)
+            const basePivot = new THREE.Vector3(0, 0, 1.5)
+
+            // Prefer world positions from pybullet if available
+            if (s.pos1 || s.pos2) {
+                // convert centers reported by pybullet into link endpoints
                 if (s.pos1) {
-                    const [x, y, z] = s.pos1
-                    joint1.position.set(x, y, z)
-                    rod1.visible = true
+                    const c1 = new THREE.Vector3(s.pos1[0], s.pos1[1], s.pos1[2])
+                    // first link: top is basePivot, center is c1 => bottom = 2*c1 - top
+                    const top1 = basePivot.clone()
+                    const bottom1 = c1.clone().multiplyScalar(2).sub(top1)
+                    alignCylinderBetween(rod1, top1, bottom1, 1.0)
+                    joint1.position.copy(bottom1)
                     joint1.visible = true
+                } else {
+                    rod1.visible = false
+                    joint1.visible = false
                 }
+
                 if (s.pos2) {
-                    const [x, y, z] = s.pos2
-                    joint2.position.set(x, y, z)
-                    rod2.visible = true
+                    const c2 = new THREE.Vector3(s.pos2[0], s.pos2[1], s.pos2[2])
+                    // second link top is the joint between link1 and link2. If pos1 present compute it,
+                    // otherwise assume top is basePivot (degenerate case)
+                    const top2 = s.pos1 ? new THREE.Vector3(s.pos1[0], s.pos1[1], s.pos1[2]).multiplyScalar(2).sub(basePivot) : basePivot.clone()
+                    const bottom2 = c2.clone().multiplyScalar(2).sub(top2)
+                    alignCylinderBetween(rod2, top2, bottom2, 1.0)
+                    joint2.position.copy(bottom2)
                     joint2.visible = true
+                } else {
+                    rod2.visible = false
+                    joint2.visible = false
                 }
-                if (s.pos1 && s.pos2) {
-                    const [x1, y1, z1] = s.pos1
-                    const [x2, y2, z2] = s.pos2
-                    rod1.position.set((0 + x1) / 2, (0 + y1) / 2, (1.5 + z1) / 2)
-                    rod2.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2)
-                }
-                // follow camera behavior: smoothly move camera behind the first link
+
+                // follow camera behavior: smoothly move camera behind the first link (use joint or center)
                 if (cameraMode === 'follow' && s.pos1 && cameraRef.current && controlsRef.current) {
-                    const [x, y, z] = s.pos1
                     const cam = cameraRef.current
                     const controls = controlsRef.current
-                    const desired = new THREE.Vector3(x, y - 2.2, z + 1.2)
+                    const c1 = new THREE.Vector3(s.pos1[0], s.pos1[1], s.pos1[2])
+                    const desired = new THREE.Vector3(c1.x, c1.y - 2.2, c1.z + 1.2)
                     cam.position.lerp(desired, 0.12)
-                    const t = new THREE.Vector3(x, y, z)
-                    controls.target.lerp(t, 0.18)
+                    controls.target.lerp(c1, 0.18)
                     controls.update()
                 }
             } else if (s.theta !== undefined) {
+                // analytic single-pendulum fallback (no pybullet)
                 const theta = s.theta
                 const l = 1.0
-                const x = l * Math.sin(theta)
-                const z = 1.0 - l * Math.cos(theta)
-                rod1.position.set(x / 2, 0, z / 2 + 0.5)
-                rod1.rotation.set(0, 0, -theta)
-                joint1.position.set(x, 0, z + 0.5)
+                const top = basePivot.clone()
+                const bottom = new THREE.Vector3(l * Math.sin(theta), 0, 1.5 - l * Math.cos(theta))
+                alignCylinderBetween(rod1, top, bottom, l)
+                joint1.position.copy(bottom)
+                joint1.visible = true
                 rod2.visible = false
                 joint2.visible = false
             } else if (s.th1 !== undefined) {
+                // analytic double-pendulum fallback (angles only)
                 const th1 = s.th1
                 const th2 = s.th2
                 const l = 1.0
-                const x1 = l * Math.sin(th1)
-                const z1 = 1.0 - l * Math.cos(th1)
-                const x2 = x1 + l * Math.sin(th2)
-                const z2 = z1 - l * Math.cos(th2)
-                rod1.position.set(x1 / 2, 0, z1 / 2 + 0.5)
-                rod1.rotation.set(0, 0, -th1)
-                joint1.position.set(x1, 0, z1 + 0.5)
-                rod2.position.set((x1 + x2) / 2, 0, (z1 + z2) / 2 + 0.5)
-                rod2.rotation.set(0, 0, -th2)
-                joint2.position.set(x2, 0, z2 + 0.5)
-                rod2.visible = true
+                const top1 = basePivot.clone()
+                const bottom1 = new THREE.Vector3(l * Math.sin(th1), 0, 1.5 - l * Math.cos(th1))
+                alignCylinderBetween(rod1, top1, bottom1, l)
+                joint1.position.copy(bottom1)
+                joint1.visible = true
+
+                const top2 = bottom1.clone()
+                const bottom2 = new THREE.Vector3(bottom1.x + l * Math.sin(th2), 0, bottom1.z - l * Math.cos(th2))
+                alignCylinderBetween(rod2, top2, bottom2, l)
+                joint2.position.copy(bottom2)
                 joint2.visible = true
             }
         }
