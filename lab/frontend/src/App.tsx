@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import PendulumCanvas from './PendulumCanvas'
+import ThreeScene from './ThreeScene'
 
 type Mode = 'single' | 'double'
 type Controller = 'pid' | 'nn'
@@ -30,7 +31,7 @@ export default function App() {
   const start = () => {
     if (!ws) return
     ws.send(
-      JSON.stringify({ action: 'start', mode, controller, dt: 0.02, target: 0.0 })
+      JSON.stringify({ action: 'start', mode, controller, dt: 0.02, target: 0.0, engine: 'pybullet' })
     )
     setRunning(true)
   }
@@ -66,8 +67,14 @@ export default function App() {
           Stop
         </button>
       </div>
-      <PendulumCanvas state={state} mode={mode} />
+      <div style={{ display: 'flex', gap: 12 }}>
+        <ThreeScene state={state} />
+      </div>
       <pre className="state">{JSON.stringify(state, null, 2)}</pre>
+      <div style={{ marginTop: 8 }}>
+        <button onClick={() => ws?.send(JSON.stringify({ action: 'train_start' }))}>Start Training</button>
+        <button onClick={() => ws?.send(JSON.stringify({ action: 'train_stop' }))}>Stop Training</button>
+      </div>
     </div>
   )
 }
