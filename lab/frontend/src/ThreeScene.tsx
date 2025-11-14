@@ -124,7 +124,7 @@ export default function ThreeScene({ state, onFps }: any) {
 
     animate()
 
-    const onResize = () => {
+    const resize = () => {
       if (!mount.current) return
       const w = mount.current.clientWidth
       const h = mount.current.clientHeight
@@ -132,12 +132,14 @@ export default function ThreeScene({ state, onFps }: any) {
       camera.updateProjectionMatrix()
       renderer.setSize(w, h)
     }
-    window.addEventListener('resize', onResize)
+    // initial size
+    resize()
+    window.addEventListener('resize', resize)
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       renderer.dispose()
-      window.removeEventListener('resize', onResize)
+      window.removeEventListener('resize', resize)
       if (el && renderer.domElement) el.removeChild(renderer.domElement)
     }
   }, [])
@@ -146,5 +148,5 @@ export default function ThreeScene({ state, onFps }: any) {
     // state updates handled in animate via closure
   }, [state])
 
-  return <div ref={mount} style={{ width: '100%', height: 520, position: 'relative' }} />
+  return <div ref={mount} className="three-mount" />
 }
