@@ -70,6 +70,11 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	border: 1px solid rgba(255,255,255,0.12);
 	background: rgba(255,255,255,0.03);
 }
+.styled-select__control:focus {
+	outline: none;
+	box-shadow: 0 0 0 4px rgba(20,140,255,0.12);
+}
+.styled-select__control { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
 .styled-select__label { font-size: 14px }
 .styled-select__chev { font-size: 12px; opacity: 0.8 }
 .styled-select__list {
@@ -95,6 +100,7 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 }
 .styled-select__item:hover { background: rgba(255,255,255,0.06); transform: translateY(-1px) }
 .styled-select__item--active { background: rgba(20,140,255,0.12); }
+.styled-select__item--highlight { background: rgba(255,255,255,0.08); }
 .card { padding: 8px; border-radius: 8px; }
 .stat-box { padding: 6px 8px; border-radius: 6px; }
 
