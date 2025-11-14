@@ -175,12 +175,12 @@ export default function ThreeScene({ state, onFps }: any) {
         // state updates handled in animate via closure
     }, [state])
 
-    // Apply camera presets when cameraMode changes
-    useEffect(() => {
+    // Apply camera presets when cameraMode changes (or when reapplied)
+    function applyCameraMode(mode: 'orbit' | 'top' | 'side' | 'front' | 'follow') {
         const cam = cameraRef.current
         const controls = controlsRef.current
         if (!cam || !controls) return
-        switch (cameraMode) {
+        switch (mode) {
             case 'top':
                 cam.position.set(0, 0, 6)
                 controls.target.set(0, 0, 1)
@@ -203,6 +203,13 @@ export default function ThreeScene({ state, onFps }: any) {
         }
         cam.updateProjectionMatrix()
         controls.update()
+        // update state so UI reflects the active mode
+        setCameraMode(mode)
+    }
+
+    useEffect(() => {
+        // apply preset when cameraMode state changes
+        applyCameraMode(cameraMode)
     }, [cameraMode])
 
     function CameraButton({ mode, title, svg }: { mode: 'orbit' | 'top' | 'side' | 'front' | 'follow'; title: string; svg: JSX.Element }) {
@@ -212,7 +219,7 @@ export default function ThreeScene({ state, onFps }: any) {
                 className={"cam-btn" + (active ? ' cam-btn--active' : '')}
                 aria-pressed={active}
                 title={title}
-                onClick={() => setCameraMode(mode)}
+                onClick={() => applyCameraMode(mode)}
             >
                 {svg}
             </button>
