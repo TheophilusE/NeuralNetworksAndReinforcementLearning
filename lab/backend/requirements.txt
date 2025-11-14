@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+numpy
+python-multipart
+pydantic
+websockets
+python-dotenv
+pybullet
