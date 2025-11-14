@@ -46,7 +46,7 @@ export default function StatsSidebar({ stats, docked = true, onToggleDock }: any
 
   return (
     <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 30 }}>
-      <div style={{ background: 'rgba(255,255,255,0.95)', padding: 8, borderRadius: 8, width: 340 }}>
+      <div className="glass card" style={{ padding: 8, width: 340 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <strong>Training Stats</strong>
           <button onClick={() => { setOpen(!open); if (onToggleDock) onToggleDock(!open) }}>{open ? 'Undock' : 'Dock'}</button>

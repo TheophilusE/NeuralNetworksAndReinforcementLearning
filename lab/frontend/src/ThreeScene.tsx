@@ -6,7 +6,13 @@ export default function ThreeScene({ state, onFps }: any) {
   const mount = useRef<HTMLDivElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
+  const stateRef = useRef<any>(state)
   const [fps, setFps] = useState<number | undefined>(undefined)
+
+  // keep a ref to latest state so the animation loop (created once) sees updates
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   useEffect(() => {
     const el = mount.current!
@@ -58,25 +64,30 @@ export default function ThreeScene({ state, onFps }: any) {
     let frames = 0
 
     function updateFromState() {
-      if (!state) return
+      const s = stateRef.current
+      if (!s) return
       // prefer world positions from pybullet if available
-      if (state.pos2 || state.pos1) {
-        if (state.pos1) {
-          const [x, y, z] = state.pos1
+      if (s.pos2 || s.pos1) {
+        if (s.pos1) {
+          const [x, y, z] = s.pos1
           joint1.position.set(x, y, z)
+          rod1.visible = true
+          joint1.visible = true
         }
-        if (state.pos2) {
-          const [x, y, z] = state.pos2
+        if (s.pos2) {
+          const [x, y, z] = s.pos2
           joint2.position.set(x, y, z)
+          rod2.visible = true
+          joint2.visible = true
         }
-        if (state.pos1 && state.pos2) {
-          const [x1, y1, z1] = state.pos1
-          const [x2, y2, z2] = state.pos2
+        if (s.pos1 && s.pos2) {
+          const [x1, y1, z1] = s.pos1
+          const [x2, y2, z2] = s.pos2
           rod1.position.set((0 + x1) / 2, (0 + y1) / 2, (1.5 + z1) / 2)
           rod2.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2)
         }
-      } else if (state.theta !== undefined) {
-        const theta = state.theta
+      } else if (s.theta !== undefined) {
+        const theta = s.theta
         const l = 1.0
         const x = l * Math.sin(theta)
         const z = 1.0 - l * Math.cos(theta)
@@ -85,9 +96,9 @@ export default function ThreeScene({ state, onFps }: any) {
         joint1.position.set(x, 0, z + 0.5)
         rod2.visible = false
         joint2.visible = false
-      } else if (state.th1 !== undefined) {
-        const th1 = state.th1
-        const th2 = state.th2
+      } else if (s.th1 !== undefined) {
+        const th1 = s.th1
+        const th2 = s.th2
         const l = 1.0
         const x1 = l * Math.sin(th1)
         const z1 = 1.0 - l * Math.cos(th1)

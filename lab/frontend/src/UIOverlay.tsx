@@ -51,8 +51,8 @@ export default function UIOverlay({
   }, [mode])
 
   return (
-    <div style={overlayStyle}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <div className="glass overlay">
+      <div className="overlay-row">
         <label style={labelStyle}>
           Mode
           <select value={mode} onChange={(e) => onChangeMode(e.target.value as any)}>
@@ -84,7 +84,7 @@ export default function UIOverlay({
           Train Stop
         </button>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} style={{ width: 100 }} />
+          <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} style={{ width: 100, minWidth: 80 }} />
           <button onClick={() => onSavePolicy(policyName)} style={buttonStyle}>
             Save Policy
           </button>
@@ -124,25 +124,16 @@ export default function UIOverlay({
         </div>
       )}
       <div style={{ marginTop: 8, display: 'flex', gap: 12 }}>
-        <div style={statBox}>FPS: {fps ? fps.toFixed(1) : '-'}</div>
-        <div style={statBox}>Mode: {mode}</div>
-        <div style={statBox}>Controller: {controller}</div>
+        <div className="glass stat-box">FPS: {fps ? fps.toFixed(1) : '-'}</div>
+        <div className="glass stat-box">Mode: {mode}</div>
+        <div className="glass stat-box">Controller: {controller}</div>
       </div>
     </div>
   )
 }
 
-const overlayStyle: React.CSSProperties = {
-  position: 'absolute',
-  left: 12,
-  top: 12,
-  padding: 12,
-  background: 'rgba(255,255,255,0.9)',
-  borderRadius: 8,
-  boxShadow: '0 6px 18px rgba(0,0,0,0.2)',
-  zIndex: 20,
-}
+// Keep small inline positioning but rely on CSS for look-and-feel
+const overlayStyle: React.CSSProperties = { position: 'absolute', left: 12, top: 12, zIndex: 20 }
 
 const labelStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', fontSize: 12 }
 const buttonStyle: React.CSSProperties = { padding: '6px 10px', cursor: 'pointer' }
-const statBox: React.CSSProperties = { padding: '6px 8px', background: '#f4f4f4', borderRadius: 6 }

@@ -101,7 +101,7 @@ export default function App() {
       />
       <StatsSidebar stats={trainingStats || { iter: 0, last_reward: null, history: [] }} docked={true} />
       <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 30 }}>
-        <pre style={{ background: 'rgba(255,255,255,0.9)', padding: 8, borderRadius: 6 }}>{JSON.stringify(state, null, 2)}</pre>
+        <pre className="glass card" style={{ padding: 8, maxWidth: 420, overflow: 'auto' }}>{JSON.stringify(state, null, 2)}</pre>
       </div>
     </div>
   )
