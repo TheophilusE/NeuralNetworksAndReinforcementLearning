@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
+import StyledSelect from './StyledSelect'
 
 type Props = {
   mode: 'single' | 'double'
@@ -55,17 +56,11 @@ export default function UIOverlay({
       <div className="overlay-row">
         <label style={labelStyle}>
           Mode
-          <select className="select focus-ring" value={mode} onChange={(e) => onChangeMode(e.target.value as any)}>
-            <option value="single">Single</option>
-            <option value="double">Double</option>
-          </select>
+          <StyledSelect value={mode} onChange={(v) => onChangeMode(v as any)} options={[{ value: 'single', label: 'Single' }, { value: 'double', label: 'Double' }]} />
         </label>
         <label style={labelStyle}>
           Controller
-          <select className="select focus-ring" value={controller} onChange={(e) => onChangeController(e.target.value as any)}>
-            <option value="pid">PID</option>
-            <option value="nn">NN</option>
-          </select>
+          <StyledSelect value={controller} onChange={(v) => onChangeController(v as any)} options={[{ value: 'pid', label: 'PID' }, { value: 'nn', label: 'NN' }]} />
         </label>
         <label style={labelStyle}>
           Target
@@ -101,10 +96,7 @@ export default function UIOverlay({
         <div style={{ marginTop: 8 }}>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             NN Framework:
-            <select className="select" value={nnFramework} onChange={(e) => onChangeNNFramework(e.target.value as any)}>
-              <option value="numpy">Numpy</option>
-              <option value="torch">PyTorch</option>
-            </select>
+            <StyledSelect value={nnFramework} onChange={(v) => onChangeNNFramework(v as any)} options={[{ value: 'numpy', label: 'Numpy' }, { value: 'torch', label: 'PyTorch' }]} />
           </label>
           <div style={{ marginTop: 6 }}>
             <strong>Loaded:</strong> {currentPolicyName ? currentPolicyName : 'none'}
