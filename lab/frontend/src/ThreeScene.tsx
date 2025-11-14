@@ -207,18 +207,59 @@ export default function ThreeScene({ state, onFps }: any) {
 
   function CameraUI() {
     return (
-      <div className="camera-panel glass pop">
-        <select className="select" value={cameraMode} onChange={(e) => setCameraMode(e.target.value as any)}>
-          <option value="orbit">Orbit</option>
-          <option value="top">Top</option>
-          <option value="side">Side</option>
-          <option value="front">Front</option>
-          <option value="follow">Follow</option>
-        </select>
+      <div className="camera-panel" onMouseDown={(e) => e.stopPropagation()}>
+        <StyledSelect value={cameraMode} onChange={(v) => setCameraMode(v as any)} options={opts} />
       </div>
     )
   }
 
+  function StyledSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string }> }) {
+    const [open, setOpen] = useState(false)
+    const ref = useRef<HTMLDivElement | null>(null)
+
+    useEffect(() => {
+      function onDoc(e: MouseEvent) {
+        if (!ref.current) return
+        if (!ref.current.contains(e.target as Node)) setOpen(false)
+      }
+      document.addEventListener('mousedown', onDoc)
+      return () => document.removeEventListener('mousedown', onDoc)
+    }, [])
+
+    return (
+      <div ref={ref} className="styled-select" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="styled-select__control glass" onClick={() => setOpen((s) => !s)}>
+          <div className="styled-select__label">{options.find((o) => o.value === value)?.label}</div>
+          <div className="styled-select__chev">▾</div>
+        </div>
+        {open && (
+          <div className="styled-select__list pop">
+            {options.map((o) => (
+              <div
+                key={o.value}
+                className={"styled-select__item " + (o.value === value ? 'styled-select__item--active' : '')}
+                onClick={() => {
+                  onChange(o.value)
+                  setOpen(false)
+                }}
+              >
+                {o.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const opts = [
+    { value: 'orbit', label: 'Orbit' },
+    { value: 'top', label: 'Top' },
+    { value: 'side', label: 'Side' },
+    { value: 'front', label: 'Front' },
+    { value: 'follow', label: 'Follow' },
+  ]
+ 
   return (
     <div ref={mount} className="three-mount">
       <CameraUI />

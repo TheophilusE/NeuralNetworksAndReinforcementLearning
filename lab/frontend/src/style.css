@@ -52,6 +52,49 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	align-items: center;
 }
 .camera-panel select { width: 130px; }
+
+/* Custom styled select dropdown to avoid native dropdown flicker and allow full styling */
+.styled-select {
+	position: relative;
+	min-width: 140px;
+}
+.styled-select__control {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 10px;
+	border-radius: 8px;
+	cursor: pointer;
+	user-select: none;
+	border: 1px solid rgba(255,255,255,0.12);
+	background: rgba(255,255,255,0.03);
+}
+.styled-select__label { font-size: 14px }
+.styled-select__chev { font-size: 12px; opacity: 0.8 }
+.styled-select__list {
+	position: absolute;
+	right: 0;
+	top: calc(100% + 8px);
+	min-width: 140px;
+	background: rgba(255,255,255,0.12);
+	border: 1px solid rgba(255,255,255,0.18);
+	border-radius: 8px;
+	padding: 6px;
+	box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+	z-index: 60;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.styled-select__item {
+	padding: 8px 10px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background 120ms ease, transform 120ms ease;
+}
+.styled-select__item:hover { background: rgba(255,255,255,0.06); transform: translateY(-1px) }
+.styled-select__item--active { background: rgba(20,140,255,0.12); }
 .card { padding: 8px; border-radius: 8px; }
 .stat-box { padding: 6px 8px; border-radius: 6px; }
 
