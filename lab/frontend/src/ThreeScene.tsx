@@ -11,10 +11,23 @@ export default function ThreeScene({ state, onFps }: any) {
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
     const controlsRef = useRef<any>(null)
     const [cameraMode, setCameraMode] = useState<'orbit' | 'top' | 'side' | 'front' | 'follow'>('orbit')
+    const [serverIntervalMs, setServerIntervalMs] = useState<number | null>(null)
+    const lastServerTsRef = useRef<number | null>(null)
 
     // keep a ref to latest state so the animation loop (created once) sees updates
     useEffect(() => {
         stateRef.current = state
+        // update server interval (ms between incoming state messages)
+        try {
+            const now = performance.now()
+            const last = lastServerTsRef.current
+            if (last != null) {
+                setServerIntervalMs(now - last)
+            }
+            lastServerTsRef.current = now
+        } catch (e) {
+            // ignore
+        }
     }, [state])
 
     useEffect(() => {
@@ -320,6 +333,12 @@ export default function ThreeScene({ state, onFps }: any) {
                             </svg>
                         )}
                     />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 8 }}>
+                    <div className="stat-box card glass" style={{ padding: '6px 8px' }}>
+                        <div style={{ fontSize: 12, color: 'inherit' }}><strong>Frame:</strong> {fps ? `${(1000 / fps).toFixed(1)} ms` : '—'}</div>
+                        <div style={{ fontSize: 12, color: 'inherit' }}><strong>Server:</strong> {serverIntervalMs ? `${serverIntervalMs.toFixed(1)} ms` : '—'}</div>
+                    </div>
                 </div>
             </div>
         )
