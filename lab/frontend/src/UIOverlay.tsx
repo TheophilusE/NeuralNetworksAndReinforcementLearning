@@ -16,6 +16,9 @@ type Props = {
   onPidChange: (p: { kp?: number; ki?: number; kd?: number }) => void
   onSavePolicy: (name?: string) => void
   onLoadPolicy: (name?: string) => void
+  nnFramework: 'numpy' | 'torch'
+  onChangeNNFramework: (f: 'numpy' | 'torch') => void
+  currentPolicyName?: string | null
   fps?: number
 }
 
@@ -36,6 +39,9 @@ export default function UIOverlay({
   onPidChange,
   onSavePolicy,
   onLoadPolicy,
+  nnFramework,
+  onChangeNNFramework,
+  currentPolicyName,
 }: Props) {
   const [target, setTarget] = useState(0)
   const [policyName, setPolicyName] = useState('default')
@@ -87,6 +93,20 @@ export default function UIOverlay({
           </button>
         </div>
       </div>
+      {controller === 'nn' && (
+        <div style={{ marginTop: 8 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            NN Framework:
+            <select value={nnFramework} onChange={(e) => onChangeNNFramework(e.target.value as any)}>
+              <option value="numpy">Numpy</option>
+              <option value="torch">PyTorch</option>
+            </select>
+          </label>
+          <div style={{ marginTop: 6 }}>
+            <strong>Loaded:</strong> {currentPolicyName ? currentPolicyName : 'none'}
+          </div>
+        </div>
+      )}
       {controller === 'pid' && (
         <div style={{ marginTop: 8 }}>
           <div>

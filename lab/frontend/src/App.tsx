@@ -13,6 +13,8 @@ export default function App() {
   const [controller, setController] = useState<Controller>('pid')
   const [state, setState] = useState<any>(null)
   const [fps, setFps] = useState<number | undefined>(undefined)
+  const [nnFramework, setNnFramework] = useState<'numpy' | 'torch'>('numpy')
+  const [currentPolicyName, setCurrentPolicyName] = useState<string | null>(null)
   const [pidParams, setPidParams] = useState({ kp: 30.0, ki: 0.0, kd: 2.0 })
   const [trainingStats, setTrainingStats] = useState<any>(null)
 
@@ -24,8 +26,16 @@ export default function App() {
         const msg = JSON.parse(e.data)
         if (msg.state) setState(msg.state)
         if (msg.training_stats) setTrainingStats(msg.training_stats)
-        if (msg.policy_loaded) console.log('policy loaded', msg.policy_loaded)
-        if (msg.policy_saved) console.log('policy saved', msg.policy_saved)
+        if (msg.policy_loaded) {
+          const p = msg.policy_loaded as string
+          const name = p.split('/').pop() || p
+          setCurrentPolicyName(name)
+        }
+        if (msg.policy_saved) {
+          const p = msg.policy_saved as string
+          const name = p.split('/').pop() || p
+          setCurrentPolicyName(name)
+        }
       } catch (err) {
         console.error('ws msg', err)
       }
@@ -38,7 +48,7 @@ export default function App() {
   const start = () => {
     if (!ws) return
     ws.send(
-      JSON.stringify({ action: 'start', mode, controller, dt: 0.02, target: 0.0, engine: 'pybullet' })
+      JSON.stringify({ action: 'start', mode, controller, dt: 0.02, target: 0.0, engine: 'pybullet', nn_framework: nnFramework })
     )
     setRunning(true)
   }
@@ -85,6 +95,9 @@ export default function App() {
         onPidChange={sendPidUpdate}
         onSavePolicy={savePolicy}
         onLoadPolicy={loadPolicy}
+        nnFramework={nnFramework}
+        onChangeNNFramework={(f) => setNnFramework(f)}
+        currentPolicyName={currentPolicyName}
       />
       <StatsSidebar stats={trainingStats || { iter: 0, last_reward: null, history: [] }} docked={true} />
       <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 30 }}>
