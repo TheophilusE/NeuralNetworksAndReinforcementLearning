@@ -1,46 +1,66 @@
 import numpy as np
 import threading
 import time
-from typing import Optional
+from typing import Optional, Callable
+import multiprocessing as mp
 
 
 class ESTrainer:
-    """A simple Evolution Strategies trainer for a numpy-parameterized policy.
+    """A simple Evolution Strategies trainer with optional parallel rollouts.
 
-    This trainer perturbs parameters, evaluates them in the provided `rollout_fn`,
-    and updates the policy parameters in the direction of higher returns.
+    Instead of requiring a policy object that can run rollouts in-process, the
+    trainer accepts an `evaluator` callable with signature `evaluator(theta: np.ndarray) -> float`.
+    This allows the main process to spawn worker processes to evaluate perturbed
+    parameter vectors in parallel.
     """
 
-    def __init__(self, policy, rollout_fn, population=12, sigma=0.1, alpha=0.01):
-        self.policy = policy
-        self.rollout_fn = rollout_fn
+    def __init__(self, evaluator: Callable[[np.ndarray], float], policy_setter: Callable[[np.ndarray], None],
+                 dim: int, population=12, sigma=0.1, alpha=0.01, n_workers: Optional[int] = None):
+        self.evaluator = evaluator
+        self.policy_setter = policy_setter
+        self.dim = dim
         self.population = population
         self.sigma = sigma
         self.alpha = alpha
         self.thread: Optional[threading.Thread] = None
         self.running = False
         self.stats = {"iter": 0, "last_reward": None, "history": []}
+        self.n_workers = n_workers or max(1, mp.cpu_count() - 1)
+        self.pool: Optional[mp.Pool] = None
 
     def _step_once(self):
-        theta = self.policy.get_flat_params()
+        # get current parameters from the policy via a call to policy_getter through policy_setter trick
+        # The caller is expected to provide policy_setter and ensure current params are available externally.
+        theta = self.policy_setter(None)
+        theta = np.array(theta)
         N = self.population
-        dim = theta.size
+        dim = self.dim
         eps = np.random.randn(N, dim)
-        rewards = np.zeros(N)
-        for i in range(N):
-            self.policy.set_flat_params(theta + self.sigma * eps[i])
-            rewards[i] = self.rollout_fn()
-        # standardize rewards
+
+        # prepare parameter vectors for evaluation
+        thetas = [theta + self.sigma * eps[i] for i in range(N)]
+
+        # evaluate in parallel
+        if self.n_workers > 1:
+            if self.pool is None:
+                self.pool = mp.Pool(processes=min(self.n_workers, N))
+            rewards = self.pool.map(self.evaluator, thetas)
+        else:
+            rewards = [self.evaluator(t) for t in thetas]
+
+        rewards = np.array(rewards)
         A = (rewards - rewards.mean())
         if rewards.std() > 1e-8:
             A /= rewards.std()
         grad = np.dot(A, eps) / N
         theta = theta + self.alpha / (self.sigma) * grad
-        self.policy.set_flat_params(theta)
+
+        # set updated parameters back to the policy
+        self.policy_setter(theta)
+
         self.stats["iter"] += 1
         mean_reward = float(rewards.mean())
         self.stats["last_reward"] = mean_reward
-        # append to history (bounded)
         hist = self.stats.get("history", [])
         hist.append(mean_reward)
         if len(hist) > 500:
@@ -67,3 +87,9 @@ class ESTrainer:
         self.running = False
         if self.thread:
             self.thread.join(timeout=1.0)
+        if self.pool:
+            try:
+                self.pool.close()
+                self.pool.join()
+            except Exception:
+                pass

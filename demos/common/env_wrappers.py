@@ -200,7 +200,7 @@ class BulletDoublePendulumEnv(BaseEnv):
             p.resetBasePositionAndOrientation(self.link1, [0, 0, 1.0], q, physicsClientId=self._cid)
             p.resetBasePositionAndOrientation(self.link2, [0, 0, 1.0], q, physicsClientId=self._cid)
         except Exception:
-            # If pybullet GUI not available or creation fails, ignore — env still works headless
+            # If pybullet GUI not available or creation fails, ignore - env still works headless
             self.link1 = None
             self.link2 = None
         # Set camera when GUI is enabled

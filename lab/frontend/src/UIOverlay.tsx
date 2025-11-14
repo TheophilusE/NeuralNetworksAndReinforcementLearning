@@ -104,7 +104,7 @@ export default function UIOverlay({
         </div>
       )}
       <div style={{ marginTop: 8, display: 'flex', gap: 12 }}>
-        <div style={statBox}>FPS: {fps ? fps.toFixed(1) : '—'}</div>
+        <div style={statBox}>FPS: {fps ? fps.toFixed(1) : '-'}</div>
         <div style={statBox}>Mode: {mode}</div>
         <div style={statBox}>Controller: {controller}</div>
       </div>

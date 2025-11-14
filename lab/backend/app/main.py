@@ -4,8 +4,10 @@ from fastapi.responses import JSONResponse
 from .simulation import PendulumSimulator
 from .pybullet_env import PyBulletPendulum
 from .models import StartMessage
-from .controllers import PIDController, NNController
+from .controllers import PIDController, NNController, TorchNNPolicy
+import numpy as np
 from .trainer import ESTrainer
+from . import es_worker
 import asyncio
 import json
 from pathlib import Path
@@ -57,7 +59,12 @@ async def websocket_endpoint(ws: WebSocket):
                 if start.controller == "pid":
                     controller = PIDController(kp=30.0, ki=0.0, kd=2.0)
                 else:
-                    controller = NNController()
+                    # allow choosing torch or numpy NN implementation
+                    nn_framework = msg.get('nn_framework', 'numpy')
+                    if nn_framework == 'torch':
+                        controller = TorchNNPolicy()
+                    else:
+                        controller = NNController()
                     # try loading default policy if exists
                     default_path = policies_dir / "default.npz"
                     if default_path.exists():
@@ -88,9 +95,16 @@ async def websocket_endpoint(ws: WebSocket):
                 else:
                     await ws.send_text(json.dumps({"error": "control update unsupported or controller mismatch"}))
             elif action == "save_policy":
+                name = msg.get("name", "default")
                 if isinstance(controller, NNController):
-                    name = msg.get("name", "default")
                     path = policies_dir / f"{name}.npz"
+                    try:
+                        controller.save(str(path))
+                        await ws.send_text(json.dumps({"policy_saved": str(path)}))
+                    except Exception as e:
+                        await ws.send_text(json.dumps({"policy_save_error": str(e)}))
+                elif isinstance(controller, TorchNNPolicy):
+                    path = policies_dir / f"{name}.pt"
                     try:
                         controller.save(str(path))
                         await ws.send_text(json.dumps({"policy_saved": str(path)}))
@@ -99,18 +113,27 @@ async def websocket_endpoint(ws: WebSocket):
                 else:
                     await ws.send_text(json.dumps({"error": "no NN controller to save"}))
             elif action == "load_policy":
+                name = msg.get("name", "default")
                 if isinstance(controller, NNController):
-                    name = msg.get("name", "default")
                     path = policies_dir / f"{name}.npz"
                     try:
                         controller.load(str(path))
                         await ws.send_text(json.dumps({"policy_loaded": str(path)}))
                     except Exception as e:
                         await ws.send_text(json.dumps({"policy_load_error": str(e)}))
+                elif isinstance(controller, TorchNNPolicy):
+                    path = policies_dir / f"{name}.pt"
+                    try:
+                        controller.load(str(path))
+                        await ws.send_text(json.dumps({"policy_loaded": str(path)}))
+                    except Exception as e:
+                        await ws.send_text(json.dumps({"policy_load_error": str(e)}))
+                else:
+                    await ws.send_text(json.dumps({"error": "no NN controller to load"}))
             elif action == "train_start":
                 # start online ES trainer using the current controller and sim
-                if controller is None or not isinstance(controller, NNController):
-                    await ws.send_text(json.dumps({"error": "controller must be NN to train"}))
+                if controller is None or not hasattr(controller, 'get_flat_params'):
+                    await ws.send_text(json.dumps({"error": "controller must be NN-like to train"}))
                 else:
                     # rollout uses a short episode on the same sim class
                     def rollout():
@@ -130,7 +153,27 @@ async def websocket_endpoint(ws: WebSocket):
                                 total -= abs(s.get("th1", 0.0))
                         return total
 
-                    trainer = ESTrainer(controller, rollout_fn=rollout, population=8, sigma=0.08, alpha=0.03)
+                    # create evaluator that calls the es_worker.evaluate_params in worker processes
+                    policy_kind = 'torch' if isinstance(controller, TorchNNPolicy) else 'numpy'
+                    if hasattr(controller, 'sizes'):
+                        hidden = tuple(controller.sizes[1:-1])
+                    else:
+                        hidden = (32, 32)
+
+                    def evaluator(flat: np.ndarray) -> float:
+                        # wrap es_worker.evaluate_params with required kwargs
+                        return es_worker.evaluate_params(flat, policy_kind, {'hidden_sizes': hidden},
+                                                          {'engine': engine, 'mode': start.mode, 'dt': start.dt}, steps=100)
+
+                    # policy_setter used to get/set current params in main process
+                    def policy_setter(new_theta):
+                        if new_theta is None:
+                            return controller.get_flat_params()
+                        else:
+                            controller.set_flat_params(np.array(new_theta))
+
+                    dim = controller.num_params()
+                    trainer = ESTrainer(evaluator, policy_setter, dim=dim, population=8, sigma=0.08, alpha=0.03, n_workers=4)
                     trainer.start()
                     await ws.send_text(json.dumps({"training": "started"}))
 

@@ -1,6 +1,9 @@
 import math
 import numpy as np
 from typing import List, Tuple
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 class PIDController:
@@ -107,4 +110,53 @@ class NNController:
         data = np.load(path)
         flat = data['params']
         self.set_flat_params(flat)
+
+
+class TorchNNPolicy:
+    """PyTorch MLP policy wrapper. Exposes numpy-compatible param access for trainer."""
+
+    def __init__(self, hidden_sizes: Tuple[int, ...] = (32, 32), device: str = 'cpu'):
+        self.device = torch.device(device)
+        layers = []
+        in_dim = 1
+        for h in hidden_sizes:
+            layers.append(nn.Linear(in_dim, h))
+            layers.append(nn.Tanh())
+            in_dim = h
+        layers.append(nn.Linear(in_dim, 1))
+        self.model = nn.Sequential(*layers).to(self.device)
+
+    def get_torque(self, state, target=0.0) -> float:
+        if "theta" in state:
+            err = target - state["theta"]
+        else:
+            err = target - state.get("th1", 0.0)
+        x = torch.tensor([[err]], dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            out = self.model(x)
+        return float(out.item())
+
+    def get_flat_params(self) -> np.ndarray:
+        parts = []
+        for p in self.model.parameters():
+            parts.append(p.detach().cpu().numpy().ravel())
+        return np.concatenate(parts) if parts else np.array([])
+
+    def set_flat_params(self, flat: np.ndarray):
+        i = 0
+        for p in self.model.parameters():
+            num = p.numel()
+            chunk = flat[i:i+num]
+            i += num
+            p.data.copy_(torch.from_numpy(chunk.reshape(p.shape)).to(self.device))
+
+    def num_params(self) -> int:
+        return sum(p.numel() for p in self.model.parameters())
+
+    def save(self, path: str):
+        torch.save(self.model.state_dict(), path)
+
+    def load(self, path: str):
+        state = torch.load(path, map_location=self.device)
+        self.model.load_state_dict(state)
 

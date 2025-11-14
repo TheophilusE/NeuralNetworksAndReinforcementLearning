@@ -6,3 +6,4 @@ pydantic
 websockets
 python-dotenv
 pybullet
+torch

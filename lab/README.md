@@ -10,8 +10,8 @@ PyBullet), swap in trained neural networks, or add RL agents.
 
 Structure
 ---------
-- `lab/backend` — FastAPI backend (WebSocket-based simulator)
-- `lab/frontend` — Vite + React frontend (TypeScript)
+- `lab/backend` - FastAPI backend (WebSocket-based simulator)
+- `lab/frontend` - Vite + React frontend (TypeScript)
 
 Quick start
 -----------
