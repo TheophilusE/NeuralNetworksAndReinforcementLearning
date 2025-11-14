@@ -1,14 +1,42 @@
-html, body, #root {
+html,
+body,
+#root {
 	height: 100%;
 	margin: 0;
 }
-body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
-.app { position: relative; height: 100vh; width: 100vw; color: #222; overflow: hidden }
-.controls { display:flex; gap:12px; align-items:center; margin-bottom:12px }
-.state { background:#f6f6f6; padding:8px; margin-top:12px }
+
+body {
+	font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+
+.app {
+	position: relative;
+	height: 100vh;
+	width: 100vw;
+	color: #222;
+	overflow: hidden
+}
+
+.controls {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	margin-bottom: 12px
+}
+
+.state {
+	background: #f6f6f6;
+	padding: 8px;
+	margin-top: 12px
+}
 
 /* ThreeScene mount fills the entire window */
-.three-mount { position: absolute; inset: 0; width: 100%; height: 100%; }
+.three-mount {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
 
 /* Glassy translucent card style */
 .glass {
@@ -20,9 +48,9 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	color: #111;
 }
 
-.overlay { 
-	padding: 12px; 
-	border-radius: 10px; 
+.overlay {
+	padding: 12px;
+	border-radius: 10px;
 	position: absolute;
 	left: 12px;
 	top: 12px;
@@ -33,10 +61,30 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 }
 
 /* Layout helpers so the overlay fits its children and wraps when needed */
-.overlay { display: flex; flex-direction: column; gap: 8px; }
-.overlay-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.overlay-row label, .overlay-row button, .overlay-row input, .overlay-row select { margin: 4px 0; }
-.overlay select, .overlay input { min-width: 90px; }
+.overlay {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.overlay-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.overlay-row label,
+.overlay-row button,
+.overlay-row input,
+.overlay-row select {
+	margin: 4px 0;
+}
+
+.overlay select,
+.overlay input {
+	min-width: 90px;
+}
 
 /* Camera panel in top-right of viewport */
 .camera-panel {
@@ -51,13 +99,17 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	gap: 8px;
 	align-items: center;
 }
-.camera-panel select { width: 130px; }
+
+.camera-panel select {
+	width: 130px;
+}
 
 /* Custom styled select dropdown to avoid native dropdown flicker and allow full styling */
 .styled-select {
 	position: relative;
 	min-width: 140px;
 }
+
 .styled-select__control {
 	display: flex;
 	align-items: center;
@@ -67,32 +119,49 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	border-radius: 8px;
 	cursor: pointer;
 	user-select: none;
-	border: 1px solid rgba(6,60,160,0.08);
-	background: #eef6ff; /* match scene background */
+	border: 1px solid rgba(6, 60, 160, 0.08);
+	background: #eef6ff;
+	/* match scene background */
 	color: #0b1220;
 }
+
 .styled-select__control:focus {
 	outline: none;
-	box-shadow: 0 0 0 4px rgba(20,140,255,0.12);
+	box-shadow: 0 0 0 4px rgba(20, 140, 255, 0.12);
 }
-.styled-select__control { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
-.styled-select__label { font-size: 14px }
-.styled-select__chev { font-size: 12px; opacity: 0.8 }
+
+.styled-select__control {
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	appearance: none;
+}
+
+.styled-select__label {
+	font-size: 14px
+}
+
+.styled-select__chev {
+	font-size: 12px;
+	opacity: 0.8
+}
+
 .styled-select__list {
 	position: absolute;
 	right: 0;
 	top: calc(100% + 8px);
 	min-width: 140px;
-	background: #eef6ff; /* match scene background */
-	border: 1px solid rgba(6,60,160,0.06);
+	background: #eef6ff;
+	/* match scene background */
+	border: 1px solid rgba(6, 60, 160, 0.06);
 	border-radius: 8px;
 	padding: 6px;
-	box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
 	z-index: 60;
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
 }
+
 .styled-select__item {
 	padding: 8px 10px;
 	border-radius: 6px;
@@ -101,17 +170,39 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	background: transparent;
 	color: inherit;
 }
-.styled-select__item:hover { background: #e6f6ff; transform: translateY(-1px) }
-.styled-select__item--active { background: #d4ecff; color: #04243a; }
-.styled-select__item--highlight { background: #eaf9ff; }
-.styled-select__item--highlight { background: rgba(255,255,255,0.08); }
-.card { padding: 8px; border-radius: 8px; }
-.stat-box { padding: 6px 8px; border-radius: 6px; }
+
+.styled-select__item:hover {
+	background: #e6f6ff;
+	transform: translateY(-1px)
+}
+
+.styled-select__item--active {
+	background: #d4ecff;
+	color: #04243a;
+}
+
+.styled-select__item--highlight {
+	background: #eaf9ff;
+}
+
+.styled-select__item--highlight {
+	background: rgba(255, 255, 255, 0.08);
+}
+
+.card {
+	padding: 8px;
+	border-radius: 8px;
+}
+
+.stat-box {
+	padding: 6px 8px;
+	border-radius: 6px;
+}
 
 /* Slight variant for light text on darker backgrounds (if needed) */
 .glass--light {
-	background: rgba(255,255,255,0.9);
-	border: 1px solid rgba(0,0,0,0.06);
+	background: rgba(255, 255, 255, 0.9);
+	border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 /* Buttons, inputs, selects */
@@ -122,65 +213,229 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	gap: 8px;
 	padding: 8px 12px;
 	border-radius: 8px;
-	border: 1px solid rgba(255,255,255,0.12);
-	background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
 	color: #0b1220;
 	cursor: pointer;
 	transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
 	font-weight: 600;
 	backdrop-filter: blur(6px);
 }
-.btn:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(16,24,40,0.25); }
-.btn:active { transform: translateY(-1px) scale(0.995); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none }
-.btn--primary { background: linear-gradient(180deg, rgba(20,140,255,0.95), rgba(10,90,220,0.95)); color: white; border: 1px solid rgba(6,60,160,0.85) }
-.btn--ghost { background: transparent; border: 1px solid rgba(255,255,255,0.06); color: inherit }
+
+.btn:hover {
+	transform: translateY(-3px);
+	box-shadow: 0 10px 24px rgba(16, 24, 40, 0.25);
+}
+
+.btn:active {
+	transform: translateY(-1px) scale(0.995);
+}
+
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	transform: none;
+	box-shadow: none
+}
+
+.btn--primary {
+	background: linear-gradient(180deg, rgba(20, 140, 255, 0.95), rgba(10, 90, 220, 0.95));
+	color: white;
+	border: 1px solid rgba(6, 60, 160, 0.85)
+}
+
+.btn--ghost {
+	background: transparent;
+	border: 1px solid rgba(255, 255, 255, 0.06);
+	color: inherit
+}
 
 /* Danger/Stop button */
 .btn--danger {
-	background: linear-gradient(180deg, rgba(235,77,75,0.95), rgba(200,40,40,0.95));
+	background: linear-gradient(180deg, rgba(235, 77, 75, 0.95), rgba(200, 40, 40, 0.95));
 	color: white;
-	border: 1px solid rgba(160,20,20,0.9);
+	border: 1px solid rgba(160, 20, 20, 0.9);
 }
 
 .input {
 	padding: 8px 10px;
 	border-radius: 8px;
-	border: 1px solid rgba(255,255,255,0.12);
-	background: rgba(255,255,255,0.04);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: rgba(255, 255, 255, 0.04);
 	color: inherit;
 	transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease;
 	outline: none;
 }
-.input:focus { box-shadow: 0 6px 18px rgba(16,24,40,0.18); border-color: rgba(255,255,255,0.22); transform: translateY(-1px) }
-.select { padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03) }
+
+.input:focus {
+	box-shadow: 0 6px 18px rgba(16, 24, 40, 0.18);
+	border-color: rgba(255, 255, 255, 0.22);
+	transform: translateY(-1px)
+}
+
+.select {
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: rgba(255, 255, 255, 0.03)
+}
 
 /* Animations */
-.fade-in { animation: fadeIn 360ms ease both }
-.slide-up { animation: slideUp 420ms cubic-bezier(.2,.9,.3,1) both }
-.float { animation: floatY 3.6s ease-in-out infinite }
-.pulse { animation: pulseScale 1.6s ease-in-out infinite }
+.fade-in {
+	animation: fadeIn 360ms ease both
+}
+
+.slide-up {
+	animation: slideUp 420ms cubic-bezier(.2, .9, .3, 1) both
+}
+
+.float {
+	animation: floatY 3.6s ease-in-out infinite
+}
+
+.pulse {
+	animation: pulseScale 1.6s ease-in-out infinite
+}
 
 /* Additional animations */
-.wiggle { animation: wiggle 800ms ease-in-out both }
-.pop { animation: popIn 260ms cubic-bezier(.2,.9,.3,1) both }
-.bounce { animation: bounceIn 600ms cubic-bezier(.22,.9,.3,1) both }
+.wiggle {
+	animation: wiggle 800ms ease-in-out both
+}
 
-@keyframes wiggle { 0% { transform: rotate(0deg) } 25% { transform: rotate(-4deg) } 50% { transform: rotate(4deg) } 75% { transform: rotate(-2deg) } 100% { transform: rotate(0deg) } }
-@keyframes popIn { 0% { opacity: 0; transform: scale(0.92) } 60% { opacity: 1; transform: scale(1.03) } 100% { transform: scale(1) } }
-@keyframes bounceIn { 0% { opacity: 0; transform: translateY(20px) scale(0.98) } 60% { opacity: 1; transform: translateY(-6px) scale(1.02) } 100% { transform: translateY(0) scale(1) } }
+.pop {
+	animation: popIn 260ms cubic-bezier(.2, .9, .3, 1) both
+}
 
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
-@keyframes slideUp { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
-@keyframes floatY { 0% { transform: translateY(0) } 50% { transform: translateY(-4px) } 100% { transform: translateY(0) } }
-@keyframes pulseScale { 0% { transform: scale(1) } 50% { transform: scale(1.02) } 100% { transform: scale(1) } }
+.bounce {
+	animation: bounceIn 600ms cubic-bezier(.22, .9, .3, 1) both
+}
+
+@keyframes wiggle {
+	0% {
+		transform: rotate(0deg)
+	}
+
+	25% {
+		transform: rotate(-4deg)
+	}
+
+	50% {
+		transform: rotate(4deg)
+	}
+
+	75% {
+		transform: rotate(-2deg)
+	}
+
+	100% {
+		transform: rotate(0deg)
+	}
+}
+
+@keyframes popIn {
+	0% {
+		opacity: 0;
+		transform: scale(0.92)
+	}
+
+	60% {
+		opacity: 1;
+		transform: scale(1.03)
+	}
+
+	100% {
+		transform: scale(1)
+	}
+}
+
+@keyframes bounceIn {
+	0% {
+		opacity: 0;
+		transform: translateY(20px) scale(0.98)
+	}
+
+	60% {
+		opacity: 1;
+		transform: translateY(-6px) scale(1.02)
+	}
+
+	100% {
+		transform: translateY(0) scale(1)
+	}
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(6px)
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0)
+	}
+}
+
+@keyframes slideUp {
+	from {
+		opacity: 0;
+		transform: translateY(12px)
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0)
+	}
+}
+
+@keyframes floatY {
+	0% {
+		transform: translateY(0)
+	}
+
+	50% {
+		transform: translateY(-4px)
+	}
+
+	100% {
+		transform: translateY(0)
+	}
+}
+
+@keyframes pulseScale {
+	0% {
+		transform: scale(1)
+	}
+
+	50% {
+		transform: scale(1.02)
+	}
+
+	100% {
+		transform: scale(1)
+	}
+}
 
 /* Subtle focus rings for keyboard navigation */
-.focus-ring:focus { box-shadow: 0 0 0 4px rgba(20,140,255,0.12) }
+.focus-ring:focus {
+	box-shadow: 0 0 0 4px rgba(20, 140, 255, 0.12)
+}
 
 /* Respect prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
-	.fade-in, .slide-up, .float, .pulse, .wiggle, .pop, .bounce { animation: none !important; }
-	.btn:hover { transform: none; box-shadow: none }
-}
 
+	.fade-in,
+	.slide-up,
+	.float,
+	.pulse,
+	.wiggle,
+	.pop,
+	.bounce {
+		animation: none !important;
+	}
+
+	.btn:hover {
+		transform: none;
+		box-shadow: none
+	}
+}
