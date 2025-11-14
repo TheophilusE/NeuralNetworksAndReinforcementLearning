@@ -8,3 +8,15 @@ __pycache__/
 .venv
 
 *.pth
+
+# ignore node modules anywhere
+**/node_modules/
+# ignore build output directories
+**/dist/
+**/build/
+**/out/
+# ignore log files
+*.log
+# ignore environment variable files
+.env
+.env.*.local
