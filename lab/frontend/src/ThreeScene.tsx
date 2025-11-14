@@ -8,6 +8,9 @@ export default function ThreeScene({ state, onFps }: any) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
   const stateRef = useRef<any>(state)
   const [fps, setFps] = useState<number | undefined>(undefined)
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+  const controlsRef = useRef<any>(null)
+  const [cameraMode, setCameraMode] = useState<'orbit' | 'top' | 'side' | 'front' | 'follow'>('orbit')
 
   // keep a ref to latest state so the animation loop (created once) sees updates
   useEffect(() => {
@@ -30,10 +33,12 @@ export default function ThreeScene({ state, onFps }: any) {
     camera.position.set(0, -3.5, 2)
     camera.up.set(0, 0, 1)
     camera.lookAt(0, 0, 1)
+    cameraRef.current = camera
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.target.set(0, 0, 1)
+    controlsRef.current = controls
 
     const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8)
     scene.add(hemi)
@@ -85,6 +90,17 @@ export default function ThreeScene({ state, onFps }: any) {
           const [x2, y2, z2] = s.pos2
           rod1.position.set((0 + x1) / 2, (0 + y1) / 2, (1.5 + z1) / 2)
           rod2.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2)
+        }
+        // follow camera behavior: smoothly move camera behind the first link
+        if (cameraMode === 'follow' && s.pos1 && cameraRef.current && controlsRef.current) {
+          const [x, y, z] = s.pos1
+          const cam = cameraRef.current
+          const controls = controlsRef.current
+          const desired = new THREE.Vector3(x, y - 2.2, z + 1.2)
+          cam.position.lerp(desired, 0.12)
+          const t = new THREE.Vector3(x, y, z)
+          controls.target.lerp(t, 0.18)
+          controls.update()
         }
       } else if (s.theta !== undefined) {
         const theta = s.theta
@@ -159,5 +175,53 @@ export default function ThreeScene({ state, onFps }: any) {
     // state updates handled in animate via closure
   }, [state])
 
-  return <div ref={mount} className="three-mount" />
+  // Apply camera presets when cameraMode changes
+  useEffect(() => {
+    const cam = cameraRef.current
+    const controls = controlsRef.current
+    if (!cam || !controls) return
+    switch (cameraMode) {
+      case 'top':
+        cam.position.set(0, 0, 6)
+        controls.target.set(0, 0, 1)
+        break
+      case 'side':
+        cam.position.set(6, 0, 1)
+        controls.target.set(0, 0, 1)
+        break
+      case 'front':
+        cam.position.set(0, -6, 1)
+        controls.target.set(0, 0, 1)
+        break
+      case 'orbit':
+        cam.position.set(0, -3.5, 2)
+        controls.target.set(0, 0, 1)
+        break
+      case 'follow':
+        // follow handled in updateFromState
+        break
+    }
+    cam.updateProjectionMatrix()
+    controls.update()
+  }, [cameraMode])
+
+  function CameraUI() {
+    return (
+      <div className="camera-panel glass pop">
+        <select className="select" value={cameraMode} onChange={(e) => setCameraMode(e.target.value as any)}>
+          <option value="orbit">Orbit</option>
+          <option value="top">Top</option>
+          <option value="side">Side</option>
+          <option value="front">Front</option>
+          <option value="follow">Follow</option>
+        </select>
+      </div>
+    )
+  }
+
+  return (
+    <div ref={mount} className="three-mount">
+      <CameraUI />
+    </div>
+  )
 }

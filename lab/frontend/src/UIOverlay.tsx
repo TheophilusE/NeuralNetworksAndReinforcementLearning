@@ -74,7 +74,11 @@ export default function UIOverlay({
         <button className="btn btn--primary fade-in" onClick={onStart} disabled={running}>
           Start
         </button>
-        <button className="btn btn--ghost fade-in" onClick={onStop} disabled={!running}>
+        <button
+          className={"btn btn--danger " + (running ? 'pulse' : 'fade-in')}
+          onClick={onStop}
+          disabled={!running}
+        >
           Stop
         </button>
         <button className="btn fade-in" onClick={onTrainStart}>
