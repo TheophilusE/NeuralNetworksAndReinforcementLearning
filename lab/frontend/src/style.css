@@ -46,3 +46,51 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	border: 1px solid rgba(0,0,0,0.06);
 }
 
+/* Buttons, inputs, selects */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: 8px;
+	border: 1px solid rgba(255,255,255,0.12);
+	background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+	color: #0b1220;
+	cursor: pointer;
+	transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+	font-weight: 600;
+	backdrop-filter: blur(6px);
+}
+.btn:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(16,24,40,0.25); }
+.btn:active { transform: translateY(-1px) scale(0.995); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none }
+.btn--primary { background: linear-gradient(180deg, rgba(20,140,255,0.95), rgba(10,90,220,0.95)); color: white; border: 1px solid rgba(6,60,160,0.85) }
+.btn--ghost { background: transparent; border: 1px solid rgba(255,255,255,0.06); color: inherit }
+
+.input {
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid rgba(255,255,255,0.12);
+	background: rgba(255,255,255,0.04);
+	color: inherit;
+	transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease;
+	outline: none;
+}
+.input:focus { box-shadow: 0 6px 18px rgba(16,24,40,0.18); border-color: rgba(255,255,255,0.22); transform: translateY(-1px) }
+.select { padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03) }
+
+/* Animations */
+.fade-in { animation: fadeIn 360ms ease both }
+.slide-up { animation: slideUp 420ms cubic-bezier(.2,.9,.3,1) both }
+.float { animation: floatY 3.6s ease-in-out infinite }
+.pulse { animation: pulseScale 1.6s ease-in-out infinite }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes floatY { 0% { transform: translateY(0) } 50% { transform: translateY(-4px) } 100% { transform: translateY(0) } }
+@keyframes pulseScale { 0% { transform: scale(1) } 50% { transform: scale(1.02) } 100% { transform: scale(1) } }
+
+/* Subtle focus rings for keyboard navigation */
+.focus-ring:focus { box-shadow: 0 0 0 4px rgba(20,140,255,0.12) }
+

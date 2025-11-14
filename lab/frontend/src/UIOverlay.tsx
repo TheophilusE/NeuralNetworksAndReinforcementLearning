@@ -55,40 +55,40 @@ export default function UIOverlay({
       <div className="overlay-row">
         <label style={labelStyle}>
           Mode
-          <select value={mode} onChange={(e) => onChangeMode(e.target.value as any)}>
+          <select className="select focus-ring" value={mode} onChange={(e) => onChangeMode(e.target.value as any)}>
             <option value="single">Single</option>
             <option value="double">Double</option>
           </select>
         </label>
         <label style={labelStyle}>
           Controller
-          <select value={controller} onChange={(e) => onChangeController(e.target.value as any)}>
+          <select className="select focus-ring" value={controller} onChange={(e) => onChangeController(e.target.value as any)}>
             <option value="pid">PID</option>
             <option value="nn">NN</option>
           </select>
         </label>
         <label style={labelStyle}>
           Target
-          <input type="number" value={target} step="0.1" onChange={(e) => setTarget(parseFloat(e.target.value))} />
+          <input className="input focus-ring" type="number" value={target} step="0.1" onChange={(e) => setTarget(parseFloat(e.target.value))} />
         </label>
-        <button onClick={onStart} disabled={running} style={buttonStyle}>
+        <button className="btn btn--primary fade-in" onClick={onStart} disabled={running}>
           Start
         </button>
-        <button onClick={onStop} disabled={!running} style={buttonStyle}>
+        <button className="btn btn--ghost fade-in" onClick={onStop} disabled={!running}>
           Stop
         </button>
-        <button onClick={onTrainStart} style={buttonStyle}>
+        <button className="btn fade-in" onClick={onTrainStart}>
           Train Start
         </button>
-        <button onClick={onTrainStop} style={buttonStyle}>
+        <button className="btn fade-in" onClick={onTrainStop}>
           Train Stop
         </button>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} style={{ width: 100, minWidth: 80 }} />
-          <button onClick={() => onSavePolicy(policyName)} style={buttonStyle}>
+          <input className="input" value={policyName} onChange={(e) => setPolicyName(e.target.value)} style={{ width: 100, minWidth: 80 }} />
+          <button className="btn" onClick={() => onSavePolicy(policyName)}>
             Save Policy
           </button>
-          <button onClick={() => onLoadPolicy(policyName)} style={buttonStyle}>
+          <button className="btn" onClick={() => onLoadPolicy(policyName)}>
             Load Policy
           </button>
         </div>
@@ -97,7 +97,7 @@ export default function UIOverlay({
         <div style={{ marginTop: 8 }}>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             NN Framework:
-            <select value={nnFramework} onChange={(e) => onChangeNNFramework(e.target.value as any)}>
+            <select className="select" value={nnFramework} onChange={(e) => onChangeNNFramework(e.target.value as any)}>
               <option value="numpy">Numpy</option>
               <option value="torch">PyTorch</option>
             </select>
