@@ -67,8 +67,9 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	border-radius: 8px;
 	cursor: pointer;
 	user-select: none;
-	border: 1px solid rgba(255,255,255,0.12);
-	background: rgba(255,255,255,0.03);
+	border: 1px solid rgba(6,60,160,0.08);
+	background: #eef6ff; /* match scene background */
+	color: #0b1220;
 }
 .styled-select__control:focus {
 	outline: none;
@@ -82,11 +83,11 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	right: 0;
 	top: calc(100% + 8px);
 	min-width: 140px;
-	background: rgba(255,255,255,0.12);
-	border: 1px solid rgba(255,255,255,0.18);
+	background: #eef6ff; /* match scene background */
+	border: 1px solid rgba(6,60,160,0.06);
 	border-radius: 8px;
 	padding: 6px;
-	box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+	box-shadow: 0 10px 30px rgba(0,0,0,0.08);
 	z-index: 60;
 	display: flex;
 	flex-direction: column;
@@ -97,9 +98,12 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neu
 	border-radius: 6px;
 	cursor: pointer;
 	transition: background 120ms ease, transform 120ms ease;
+	background: transparent;
+	color: inherit;
 }
-.styled-select__item:hover { background: rgba(255,255,255,0.06); transform: translateY(-1px) }
-.styled-select__item--active { background: rgba(20,140,255,0.12); }
+.styled-select__item:hover { background: #e6f6ff; transform: translateY(-1px) }
+.styled-select__item--active { background: #d4ecff; color: #04243a; }
+.styled-select__item--highlight { background: #eaf9ff; }
 .styled-select__item--highlight { background: rgba(255,255,255,0.08); }
 .card { padding: 8px; border-radius: 8px; }
 .stat-box { padding: 6px 8px; border-radius: 6px; }
