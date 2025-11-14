@@ -19,7 +19,7 @@ class ESTrainer:
         self.alpha = alpha
         self.thread: Optional[threading.Thread] = None
         self.running = False
-        self.stats = {"iter": 0, "last_reward": None}
+        self.stats = {"iter": 0, "last_reward": None, "history": []}
 
     def _step_once(self):
         theta = self.policy.get_flat_params()
@@ -38,7 +38,14 @@ class ESTrainer:
         theta = theta + self.alpha / (self.sigma) * grad
         self.policy.set_flat_params(theta)
         self.stats["iter"] += 1
-        self.stats["last_reward"] = float(rewards.mean())
+        mean_reward = float(rewards.mean())
+        self.stats["last_reward"] = mean_reward
+        # append to history (bounded)
+        hist = self.stats.get("history", [])
+        hist.append(mean_reward)
+        if len(hist) > 500:
+            hist.pop(0)
+        self.stats["history"] = hist
 
     def start(self, interval=0.1):
         if self.running:

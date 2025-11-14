@@ -11,6 +11,14 @@ class PIDController:
         self.integral = 0.0
         self.last_error = None
 
+    def set_params(self, kp=None, ki=None, kd=None):
+        if kp is not None:
+            self.kp = float(kp)
+        if ki is not None:
+            self.ki = float(ki)
+        if kd is not None:
+            self.kd = float(kd)
+
     def angle_error(self, target, current):
         diff = target - current
         while diff > math.pi:
@@ -90,4 +98,13 @@ class NNController:
 
     def num_params(self) -> int:
         return self.get_flat_params().size
+
+    def save(self, path: str):
+        flat = self.get_flat_params()
+        np.savez(path, params=flat)
+
+    def load(self, path: str):
+        data = np.load(path)
+        flat = data['params']
+        self.set_flat_params(flat)
 

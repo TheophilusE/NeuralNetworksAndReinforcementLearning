@@ -10,6 +10,12 @@ type Props = {
   onTrainStop: () => void
   onChangeMode: (m: 'single' | 'double') => void
   onChangeController: (c: 'pid' | 'nn') => void
+  kp: number
+  ki: number
+  kd: number
+  onPidChange: (p: { kp?: number; ki?: number; kd?: number }) => void
+  onSavePolicy: (name?: string) => void
+  onLoadPolicy: (name?: string) => void
   fps?: number
 }
 
@@ -24,8 +30,15 @@ export default function UIOverlay({
   onChangeMode,
   onChangeController,
   fps,
+  kp,
+  ki,
+  kd,
+  onPidChange,
+  onSavePolicy,
+  onLoadPolicy,
 }: Props) {
   const [target, setTarget] = useState(0)
+  const [policyName, setPolicyName] = useState('default')
 
   useEffect(() => {
     setTarget(0)
@@ -64,7 +77,32 @@ export default function UIOverlay({
         <button onClick={onTrainStop} style={buttonStyle}>
           Train Stop
         </button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} style={{ width: 100 }} />
+          <button onClick={() => onSavePolicy(policyName)} style={buttonStyle}>
+            Save Policy
+          </button>
+          <button onClick={() => onLoadPolicy(policyName)} style={buttonStyle}>
+            Load Policy
+          </button>
+        </div>
       </div>
+      {controller === 'pid' && (
+        <div style={{ marginTop: 8 }}>
+          <div>
+            <label>KP: {kp.toFixed(2)}</label>
+            <input type="range" min="0" max="200" step="0.1" value={kp} onChange={(e) => onPidChange({ kp: parseFloat(e.target.value) })} />
+          </div>
+          <div>
+            <label>KI: {ki.toFixed(3)}</label>
+            <input type="range" min="0" max="5" step="0.001" value={ki} onChange={(e) => onPidChange({ ki: parseFloat(e.target.value) })} />
+          </div>
+          <div>
+            <label>KD: {kd.toFixed(3)}</label>
+            <input type="range" min="0" max="10" step="0.01" value={kd} onChange={(e) => onPidChange({ kd: parseFloat(e.target.value) })} />
+          </div>
+        </div>
+      )}
       <div style={{ marginTop: 8, display: 'flex', gap: 12 }}>
         <div style={statBox}>FPS: {fps ? fps.toFixed(1) : '—'}</div>
         <div style={statBox}>Mode: {mode}</div>

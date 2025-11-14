@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ThreeScene from './ThreeScene'
 import UIOverlay from './UIOverlay'
+import StatsSidebar from './StatsSidebar'
 
 type Mode = 'single' | 'double'
 type Controller = 'pid' | 'nn'
@@ -12,6 +13,8 @@ export default function App() {
   const [controller, setController] = useState<Controller>('pid')
   const [state, setState] = useState<any>(null)
   const [fps, setFps] = useState<number | undefined>(undefined)
+  const [pidParams, setPidParams] = useState({ kp: 30.0, ki: 0.0, kd: 2.0 })
+  const [trainingStats, setTrainingStats] = useState<any>(null)
 
   useEffect(() => {
     const sock = new WebSocket('ws://localhost:8000/ws')
@@ -20,6 +23,9 @@ export default function App() {
       try {
         const msg = JSON.parse(e.data)
         if (msg.state) setState(msg.state)
+        if (msg.training_stats) setTrainingStats(msg.training_stats)
+        if (msg.policy_loaded) console.log('policy loaded', msg.policy_loaded)
+        if (msg.policy_saved) console.log('policy saved', msg.policy_saved)
       } catch (err) {
         console.error('ws msg', err)
       }
@@ -43,6 +49,22 @@ export default function App() {
     setRunning(false)
   }
 
+  const sendPidUpdate = (p: { kp?: number; ki?: number; kd?: number }) => {
+    setPidParams((cur) => ({ ...cur, ...p }))
+    if (!ws) return
+    ws.send(JSON.stringify({ action: 'control', type: 'pid', params: { ...pidParams, ...p } }))
+  }
+
+  const savePolicy = (name?: string) => {
+    if (!ws) return
+    ws.send(JSON.stringify({ action: 'save_policy', name: name || 'default' }))
+  }
+
+  const loadPolicy = (name?: string) => {
+    if (!ws) return
+    ws.send(JSON.stringify({ action: 'load_policy', name: name || 'default' }))
+  }
+
   return (
     <div className="app" style={{ position: 'relative', height: '100vh' }}>
       <ThreeScene state={state} onFps={(v: number) => setFps(v)} />
@@ -57,7 +79,14 @@ export default function App() {
         onChangeMode={(m) => setMode(m)}
         onChangeController={(c) => setController(c)}
         fps={fps}
+        kp={pidParams.kp}
+        ki={pidParams.ki}
+        kd={pidParams.kd}
+        onPidChange={sendPidUpdate}
+        onSavePolicy={savePolicy}
+        onLoadPolicy={loadPolicy}
       />
+      <StatsSidebar stats={trainingStats || { iter: 0, last_reward: null, history: [] }} docked={true} />
       <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 30 }}>
         <pre style={{ background: 'rgba(255,255,255,0.9)', padding: 8, borderRadius: 6 }}>{JSON.stringify(state, null, 2)}</pre>
       </div>
