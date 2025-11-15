@@ -45,8 +45,8 @@ export default function StatsSidebar({ stats, docked = true, onToggleDock }: any
     }
 
     return (
-        <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 30 }}>
-            <div className="glass card slide-up" style={{ padding: 8, width: 340 }}>
+        <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 100000 }}>
+            <div className="glass card slide-up ui-top" style={{ padding: 8, width: 340 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <strong>Training Stats</strong>
                     <div style={{ display: 'flex', gap: 8 }}>

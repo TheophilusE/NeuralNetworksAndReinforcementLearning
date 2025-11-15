@@ -63,11 +63,11 @@ export default function StyledSelect({ value, onChange, options }: { value: stri
     }
 
     return (
-        <div ref={rootRef} className="styled-select" onPointerDown={(e) => e.stopPropagation()}>
+        <div ref={rootRef} className="styled-select ui-top" onPointerDown={(e) => e.stopPropagation()}>
             <button
                 ref={controlRef}
                 type="button"
-                className="styled-select__control glass"
+                className="styled-select__control glass ui-top"
                 aria-haspopup="listbox"
                 aria-expanded={open}
                 onClick={() => {
@@ -93,7 +93,7 @@ export default function StyledSelect({ value, onChange, options }: { value: stri
             </button>
 
             {open && (
-                <div className="styled-select__list pop" role="listbox" aria-activedescendant={highlight >= 0 ? `styled-select-opt-${options[highlight].value}` : undefined} tabIndex={-1} onPointerDown={(e) => e.stopPropagation()}>
+                <div className="styled-select__list pop ui-top" style={{ zIndex: 100000 }} role="listbox" aria-activedescendant={highlight >= 0 ? `styled-select-opt-${options[highlight].value}` : undefined} tabIndex={-1} onPointerDown={(e) => e.stopPropagation()}>
                     {options.map((o, i) => (
                         <div
                             id={`styled-select-opt-${o.value}`}

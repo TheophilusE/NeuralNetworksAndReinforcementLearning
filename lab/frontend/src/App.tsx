@@ -100,8 +100,8 @@ export default function App() {
         currentPolicyName={currentPolicyName}
       />
       <StatsSidebar stats={trainingStats || { iter: 0, last_reward: null, history: [] }} docked={true} />
-      <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 30 }}>
-        <pre className="glass card slide-up" style={{ padding: 8, maxWidth: 420, overflow: 'auto' }}>{JSON.stringify(state, null, 2)}</pre>
+      <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 100000 }}>
+        <pre className="glass card slide-up ui-top" style={{ padding: 8, maxWidth: 420, overflow: 'auto' }}>{JSON.stringify(state, null, 2)}</pre>
       </div>
     </div>
   )
