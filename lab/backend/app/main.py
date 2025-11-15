@@ -47,9 +47,13 @@ async def websocket_endpoint(ws: WebSocket):
             # fallback to simple simulator if pybullet unavailable
             sim = PendulumSimulator(mode="single", dt=0.02)
             engine = "simple"
-        controller = NNController()
+        # Use a PID controller by default for auto-start so the pendulum shows
+        # active behavior immediately (NNController may produce near-zero outputs
+        # from random weights). Use a non-zero target so the controller applies
+        # torque and the visuals move.
+        controller = PIDController(kp=30.0, ki=0.0, kd=2.0)
         # create a minimal StartMessage so run_sim can read target/dt
-        start_msg = StartMessage(action="start", mode=sim.mode, controller="nn", dt=sim.dt, target=0.0)
+        start_msg = StartMessage(action="start", mode=sim.mode, controller="pid", dt=sim.dt, target=0.2)
         asyncio.create_task(run_sim(ws, sim, controller, start_msg))
         # send initial scene immediately if available
         try:
