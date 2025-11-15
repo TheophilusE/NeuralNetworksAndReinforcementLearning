@@ -91,7 +91,13 @@ async def websocket_endpoint(ws: WebSocket):
                     sim = PendulumSimulator(mode=start.mode, dt=start.dt)
 
                 if start.controller == "pid":
+                    # create PID controller and apply any provided initial gains
                     controller = PIDController(kp=30.0, ki=0.0, kd=2.0)
+                    try:
+                        if getattr(start, 'kp', None) is not None or getattr(start, 'ki', None) is not None or getattr(start, 'kd', None) is not None:
+                            controller.set_params(kp=start.kp, ki=start.ki, kd=start.kd)
+                    except Exception:
+                        pass
                 else:
                     # allow choosing torch or numpy NN implementation
                     nn_framework = msg.get('nn_framework', 'numpy')

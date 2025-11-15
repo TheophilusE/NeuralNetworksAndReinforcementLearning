@@ -8,6 +8,10 @@ class StartMessage(BaseModel):
     controller: Literal["pid", "nn"] = "pid"
     dt: float = 0.02
     target: float = 0.0
+    # Optional initial PID gains to apply during start
+    kp: Optional[float] = None
+    ki: Optional[float] = None
+    kd: Optional[float] = None
 
 
 class ControlMessage(BaseModel):

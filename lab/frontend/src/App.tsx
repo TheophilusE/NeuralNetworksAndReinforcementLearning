@@ -11,6 +11,7 @@ export default function App() {
   const [running, setRunning] = useState(false)
   const [mode, setMode] = useState<Mode>('single')
   const [controller, setController] = useState<Controller>('pid')
+  const [target, setTarget] = useState<number>(0.0)
   const [state, setState] = useState<any>(null)
   const [scene, setScene] = useState<any>(null)
   const [fps, setFps] = useState<number | undefined>(undefined)
@@ -21,7 +22,28 @@ export default function App() {
 
   useEffect(() => {
     const sock = new WebSocket('ws://localhost:8000/ws')
-    sock.onopen = () => console.log('ws open')
+    const sendStart = () => {
+      if (!sock || sock.readyState !== WebSocket.OPEN) return
+      try {
+        const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'pybullet' }
+        if (controller === 'nn') payload.nn_framework = nnFramework
+        if (controller === 'pid') {
+          // include initial PID gains so server can apply them at start
+          payload.kp = pidParams.kp
+          payload.ki = pidParams.ki
+          payload.kd = pidParams.kd
+        }
+        sock.send(JSON.stringify(payload))
+      } catch (e) {
+        console.warn('failed to send start', e)
+      }
+    }
+
+    sock.onopen = () => {
+      console.log('ws open')
+      // send initial start so server resets env for this client
+      sendStart()
+    }
     sock.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
@@ -46,6 +68,32 @@ export default function App() {
     setWs(sock)
     return () => sock.close()
   }, [])
+  // Debounced auto-restart when top-level config changes (mode/controller/nnFramework/target)
+  const restartTimerRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!ws) return
+    if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current)
+    // debounce 300ms
+    restartTimerRef.current = window.setTimeout(() => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return
+      try {
+        const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'pybullet' }
+        if (controller === 'nn') payload.nn_framework = nnFramework
+        if (controller === 'pid') {
+          payload.kp = pidParams.kp
+          payload.ki = pidParams.ki
+          payload.kd = pidParams.kd
+        }
+        ws.send(JSON.stringify(payload))
+      } catch (e) {
+        console.warn('failed to auto-restart sim on config change', e)
+      }
+    }, 300)
+    return () => {
+      if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current)
+      restartTimerRef.current = null
+    }
+  }, [mode, controller, nnFramework, target, ws])
 
   const start = () => {
     if (!ws) return
@@ -83,6 +131,8 @@ export default function App() {
       <UIOverlay
         mode={mode}
         controller={controller}
+        target={target}
+        onChangeTarget={(t) => setTarget(t)}
         onTrainStart={() => ws?.send(JSON.stringify({ action: 'train_start' }))}
         onTrainStop={() => ws?.send(JSON.stringify({ action: 'train_stop' }))}
         onChangeMode={(m) => setMode(m)}

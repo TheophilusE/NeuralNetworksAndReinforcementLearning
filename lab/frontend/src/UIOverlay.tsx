@@ -10,6 +10,8 @@ type Props = {
   onTrainStop: () => void
   onChangeMode: (m: 'single' | 'double') => void
   onChangeController: (c: 'pid' | 'nn') => void
+  target?: number
+  onChangeTarget?: (t: number) => void
   kp: number
   ki: number
   kd: number
@@ -29,6 +31,8 @@ export default function UIOverlay({
   onTrainStop,
   onChangeMode,
   onChangeController,
+  target,
+  onChangeTarget,
   fps,
   kp,
   ki,
@@ -40,12 +44,8 @@ export default function UIOverlay({
   onChangeNNFramework,
   currentPolicyName,
 }: Props) {
-  const [target, setTarget] = useState(0)
   const [policyName, setPolicyName] = useState('default')
-
-  useEffect(() => {
-    setTarget(0)
-  }, [mode])
+  
 
   return (
     <div className="glass overlay">
@@ -58,7 +58,10 @@ export default function UIOverlay({
           Controller
           <StyledSelect value={controller} onChange={(v) => onChangeController(v as any)} options={[{ value: 'pid', label: 'PID' }, { value: 'nn', label: 'NN' }]} />
         </label>
-        {/* server streams automatically; no Start/Stop controls */}
+        <label style={labelStyle}>
+          Target
+          <input className="input focus-ring" type="number" value={target ?? 0} step="0.05" onChange={(e) => onChangeTarget && onChangeTarget(parseFloat(e.target.value))} />
+        </label>
         <button className="btn fade-in" onClick={onTrainStart}>
           Train Start
         </button>
