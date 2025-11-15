@@ -45,6 +45,7 @@ export default function UIOverlay({
   currentPolicyName,
 }: Props) {
   const [policyName, setPolicyName] = useState('default')
+  const displayTarget = target === undefined || target === null || Number.isNaN(target) ? '' : String(target)
   
 
   return (
@@ -60,7 +61,17 @@ export default function UIOverlay({
         </label>
         <label style={labelStyle}>
           Target
-          <input className="input focus-ring" type="number" value={target ?? 0} step="0.05" onChange={(e) => onChangeTarget && onChangeTarget(parseFloat(e.target.value))} />
+          <input
+            className="input focus-ring"
+            type="number"
+            value={displayTarget}
+            step="0.05"
+            onChange={(e) => {
+              if (!onChangeTarget) return
+              const v = parseFloat(e.target.value)
+              onChangeTarget(Number.isNaN(v) ? 0 : v)
+            }}
+          />
         </label>
         <button className="btn fade-in" onClick={onTrainStart}>
           Train Start

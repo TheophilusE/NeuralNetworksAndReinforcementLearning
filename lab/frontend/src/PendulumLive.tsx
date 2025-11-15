@@ -106,10 +106,15 @@ export default function PendulumLive({ ws }: Props) {
 
   return (
     <div style={{ width: '100%', height: 220 }}>
-      <div style={{ display: 'flex', gap: 8, padding: 6, alignItems: 'center' }}>
-        <div style={{ marginLeft: 0, color: '#ddd' }}>Simulation running (auto-started)</div>
+      <div className="glass card slide-up ui-top" style={{ padding: 8, borderRadius: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#04243a' }}>Pendulum - Theta (rad)</div>
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#666' }}>Auto-running</div>
+        </div>
+        <div style={{ width: '100%', height: 160, borderRadius: 6, overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' }}>
+          <canvas ref={canvasRef} width={900} height={160} style={{ width: '100%', height: 160, display: 'block', background: '#041014' , borderRadius: 6 }} />
+        </div>
       </div>
-      <canvas ref={canvasRef} width={900} height={160} style={{ width: '100%', height: 160, background: '#041014' }} />
     </div>
   )
 }

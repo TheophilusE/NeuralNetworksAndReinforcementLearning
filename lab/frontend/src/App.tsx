@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ThreeScene from './ThreeScene'
 import UIOverlay from './UIOverlay'
-import StatsSidebar from './StatsSidebar'
 import PendulumCompare from './PendulumCompare'
 import PendulumLive from './PendulumLive'
 
@@ -23,52 +22,77 @@ export default function App() {
   const [trainingStats, setTrainingStats] = useState<any>(null)
 
   useEffect(() => {
-    const sock = new WebSocket('ws://localhost:8000/ws')
-    const sendStart = () => {
-      if (!sock || sock.readyState !== WebSocket.OPEN) return
-      try {
-        const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'pybullet' }
-        if (controller === 'nn') payload.nn_framework = nnFramework
-        if (controller === 'pid') {
-          // include initial PID gains so server can apply them at start
-          payload.kp = pidParams.kp
-          payload.ki = pidParams.ki
-          payload.kd = pidParams.kd
+    let mounted = true
+    let sock: WebSocket | null = null
+    let reconnectTimer: number | null = null
+
+    const connect = () => {
+      if (!mounted) return
+      sock = new WebSocket('ws://localhost:8000/ws')
+
+      const sendStart = () => {
+        if (!sock || sock.readyState !== WebSocket.OPEN) return
+        try {
+          const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'pybullet' }
+          if (controller === 'nn') payload.nn_framework = nnFramework
+          if (controller === 'pid') {
+            payload.kp = pidParams.kp
+            payload.ki = pidParams.ki
+            payload.kd = pidParams.kd
+          }
+          sock.send(JSON.stringify(payload))
+        } catch (e) {
+          console.warn('failed to send start', e)
         }
-        sock.send(JSON.stringify(payload))
-      } catch (e) {
-        console.warn('failed to send start', e)
+      }
+
+      sock.onopen = () => {
+        console.log('ws open')
+        setWs(sock)
+        // send initial start so server resets env for this client
+        sendStart()
+      }
+
+      sock.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data)
+          if (msg.state) setState(msg.state)
+          if (msg.scene) setScene(msg.scene)
+          if (msg.training_stats) setTrainingStats(msg.training_stats)
+          if (msg.policy_loaded) {
+            const p = msg.policy_loaded as string
+            const name = p.split('/').pop() || p
+            setCurrentPolicyName(name)
+          }
+          if (msg.policy_saved) {
+            const p = msg.policy_saved as string
+            const name = p.split('/').pop() || p
+            setCurrentPolicyName(name)
+          }
+        } catch (err) {
+          console.error('ws msg', err)
+        }
+      }
+
+      sock.onclose = () => {
+        console.log('ws closed')
+        setWs(null)
+        if (!mounted) return
+        // try reconnect after 1s
+        reconnectTimer = window.setTimeout(() => connect(), 1000)
+      }
+
+      sock.onerror = (ev) => {
+        console.warn('ws error', ev)
       }
     }
 
-    sock.onopen = () => {
-      console.log('ws open')
-      // send initial start so server resets env for this client
-      sendStart()
+    connect()
+    return () => {
+      mounted = false
+      if (reconnectTimer) window.clearTimeout(reconnectTimer)
+      try { sock && sock.close() } catch {}
     }
-    sock.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data)
-        if (msg.state) setState(msg.state)
-        if (msg.scene) setScene(msg.scene)
-        if (msg.training_stats) setTrainingStats(msg.training_stats)
-        if (msg.policy_loaded) {
-          const p = msg.policy_loaded as string
-          const name = p.split('/').pop() || p
-          setCurrentPolicyName(name)
-        }
-        if (msg.policy_saved) {
-          const p = msg.policy_saved as string
-          const name = p.split('/').pop() || p
-          setCurrentPolicyName(name)
-        }
-      } catch (err) {
-        console.error('ws msg', err)
-      }
-    }
-    sock.onclose = () => console.log('ws closed')
-    setWs(sock)
-    return () => sock.close()
   }, [])
   // Debounced auto-restart when top-level config changes (mode/controller/nnFramework/target)
   const restartTimerRef = useRef<number | null>(null)
@@ -150,11 +174,11 @@ export default function App() {
         onChangeNNFramework={(f) => setNnFramework(f)}
         currentPolicyName={currentPolicyName}
       />
-      <StatsSidebar stats={trainingStats || { iter: 0, last_reward: null, history: [] }} docked={true} />
+      {/* Training Stats card removed */}
       <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 100000 }}>
         <pre className="glass card slide-up ui-top" style={{ padding: 8, maxWidth: 420, overflow: 'auto' }}>{JSON.stringify(state, null, 2)}</pre>
       </div>
-      <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 100000, width: 720 }}>
+      <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 100200, width: 720 }}>
         <PendulumLive ws={ws} />
       </div>
     </div>

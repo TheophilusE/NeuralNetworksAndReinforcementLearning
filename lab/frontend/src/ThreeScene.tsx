@@ -123,6 +123,7 @@ export default function ThreeScene({ state, scene, onFps }: any) {
 
     useEffect(() => {
         const el = mount.current!
+        const startedRef = { started: false }
         const scene3 = new THREE.Scene()
         scene3.background = new THREE.Color(0xeef6ff)
 
@@ -203,8 +204,10 @@ export default function ThreeScene({ state, scene, onFps }: any) {
         }
 
         function animate() {
-            if (frames === 0) {
+            if (frames === 0 && !startedRef.started) {
+                // Log once per mounted instance to reduce console spam in StrictMode
                 console.log('[ThreeScene] animate loop starting')
+                startedRef.started = true
             }
             frames++
             const now = performance.now()
@@ -363,8 +366,8 @@ export default function ThreeScene({ state, scene, onFps }: any) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 8 }}>
                     <div className="stat-box card glass" style={{ padding: '6px 8px', minWidth: 140, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                        <div style={{ fontSize: 12, color: 'inherit', whiteSpace: 'nowrap', display: 'flex', gap: 8 }}><strong style={{ minWidth: 56 }}>Frame:</strong><span style={{ flex: '0 0 auto' }}>{fps ? `${(1000 / fps).toFixed(1)} ms` : '—'}</span></div>
-                        <div style={{ fontSize: 12, color: 'inherit', whiteSpace: 'nowrap', display: 'flex', gap: 8 }}><strong style={{ minWidth: 56 }}>Server:</strong><span style={{ flex: '0 0 auto' }}>{serverIntervalMs != null ? `${serverIntervalMs.toFixed(1)} ms` : '—'}</span></div>
+                        <div style={{ fontSize: 12, color: 'inherit', whiteSpace: 'nowrap', display: 'flex', gap: 8 }}><strong style={{ minWidth: 56 }}>Frame:</strong><span style={{ flex: '0 0 auto' }}>{fps ? `${(1000 / fps).toFixed(1)} ms` : '-'}</span></div>
+                        <div style={{ fontSize: 12, color: 'inherit', whiteSpace: 'nowrap', display: 'flex', gap: 8 }}><strong style={{ minWidth: 56 }}>Server:</strong><span style={{ flex: '0 0 auto' }}>{serverIntervalMs != null ? `${serverIntervalMs.toFixed(1)} ms` : '-'}</span></div>
                     </div>
                 </div>
             </div>

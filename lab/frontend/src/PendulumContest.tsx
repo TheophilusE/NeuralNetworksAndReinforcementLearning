@@ -182,7 +182,15 @@ export default function PendulumContest() {
         </label>
         <label>
           Target:
-          <input type="number" step="0.01" value={target} onChange={(e) => setTarget(parseFloat(e.target.value))} />
+          <input
+            type="number"
+            step="0.01"
+            value={Number.isNaN(target) ? '' : target}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value)
+              setTarget(Number.isNaN(v) ? 0 : v)
+            }}
+          />
         </label>
         <button className="btn" onClick={sendStartContest} disabled={running}>
           Start Contest
