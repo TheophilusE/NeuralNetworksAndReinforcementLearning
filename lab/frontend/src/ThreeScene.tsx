@@ -3,43 +3,72 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
 export default function ThreeScene({ state, scene, onFps }: any) {
-    // maintain a ref to latest scene messages
-    const sceneRef = useRef<any>(null)
-    useEffect(() => { sceneRef.current = scene }, [scene])
-    // refs for scene-graph root and body map so we can update/create outside the init effect
-    const sceneGraphRootRef = useRef<THREE.Group | null>(null)
-    const bodyMapRef = useRef<Map<number, any>>(new Map())
     const mount = useRef<HTMLDivElement | null>(null)
     const rafRef = useRef<number | null>(null)
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
     const stateRef = useRef<any>(state)
+    const sceneRef = useRef<any>(scene)
     const [fps, setFps] = useState<number | undefined>(undefined)
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
     const controlsRef = useRef<any>(null)
+    const sceneGraphRootRef = useRef<THREE.Group | null>(null)
+    const bodyMapRef = useRef<Map<number, any>>(new Map())
     const [cameraMode, setCameraMode] = useState<'orbit' | 'top' | 'side' | 'front' | 'follow'>('orbit')
     const [serverIntervalMs, setServerIntervalMs] = useState<number | null>(null)
     const lastServerTsRef = useRef<number | null>(null)
 
-    // keep a ref to latest state so the animation loop (created once) sees updates
-    useEffect(() => {
-        stateRef.current = state
-        // update server interval (ms between incoming state messages)
+    useEffect(() => { stateRef.current = state
         try {
             const now = performance.now()
             const last = lastServerTsRef.current
-            if (last != null) {
-                setServerIntervalMs(now - last)
-            }
+            if (last != null) setServerIntervalMs(now - last)
             lastServerTsRef.current = now
-        } catch (e) {
-            // ignore
-        }
+        } catch {}
     }, [state])
+
+    useEffect(() => { sceneRef.current = scene }, [scene])
+
+    // helper: build a Three mesh from backend visual metadata
+    function buildMeshFromVisual(vis: any) {
+        let geom: THREE.BufferGeometry
+        let mat: THREE.Material = new THREE.MeshStandardMaterial({ color: 0x999999 })
+        try {
+            if (vis && vis.rgba && vis.rgba.length >= 3) {
+                const c = new THREE.Color(vis.rgba[0], vis.rgba[1], vis.rgba[2])
+                mat = new THREE.MeshStandardMaterial({ color: c })
+            }
+            if (vis && typeof vis.geom_type === 'number') {
+                const gt = vis.geom_type
+                if (gt === 1) {
+                    const d = vis.dimensions || [0.1, 0.1, 0.1]
+                    geom = new THREE.BoxGeometry(Math.max(0.001, d[0] * 2), Math.max(0.001, d[1] * 2), Math.max(0.001, d[2] * 2))
+                    return new THREE.Mesh(geom, mat)
+                } else if (gt === 2) {
+                    const r = (vis.dimensions && vis.dimensions[0]) ? vis.dimensions[0] : 0.05
+                    geom = new THREE.SphereGeometry(Math.max(0.001, r))
+                    return new THREE.Mesh(geom, mat)
+                } else if (gt === 3) {
+                    const d = vis.dimensions || [0.05, 0.1]
+                    const radius = Math.max(0.001, d[0])
+                    const height = Math.max(0.001, d[1] * 2)
+                    geom = new THREE.CylinderGeometry(radius, radius, height, 16)
+                    return new THREE.Mesh(geom, mat)
+                }
+            }
+            if (vis && Array.isArray(vis.dimensions) && vis.dimensions.length >= 3) {
+                const d = vis.dimensions
+                geom = new THREE.BoxGeometry(Math.max(0.001, d[0] * 2), Math.max(0.001, d[1] * 2), Math.max(0.001, d[2] * 2))
+                return new THREE.Mesh(geom, mat)
+            }
+        } catch (e) {}
+        geom = new THREE.BoxGeometry(0.12, 0.12, 0.12)
+        return new THREE.Mesh(geom, mat)
+    }
 
     useEffect(() => {
         const el = mount.current!
-        const scene = new THREE.Scene()
-        scene.background = new THREE.Color(0xeef6ff)
+        const scene3 = new THREE.Scene()
+        scene3.background = new THREE.Color(0xeef6ff)
 
         const camera = new THREE.PerspectiveCamera(50, el.clientWidth / el.clientHeight, 0.1, 1000)
         const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -60,178 +89,42 @@ export default function ThreeScene({ state, scene, onFps }: any) {
         controlsRef.current = controls
 
         const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8)
-        scene.add(hemi)
+        scene3.add(hemi)
         const dir = new THREE.DirectionalLight(0xffffff, 0.8)
         dir.position.set(5, -5, 10)
-        scene.add(dir)
+        scene3.add(dir)
 
         const grid = new THREE.GridHelper(10, 20, 0x888888, 0xdddddd)
-        scene.add(grid)
+        scene3.add(grid)
 
-        // rods and joints
-        const material1 = new THREE.MeshStandardMaterial({ color: 0xff4444 })
-        const material2 = new THREE.MeshStandardMaterial({ color: 0x44aaff })
-        const rodGeom = new THREE.CylinderGeometry(0.03, 0.03, 1.0, 12)
-        const jointGeom = new THREE.SphereGeometry(0.06, 12, 12)
-
-        const rod1 = new THREE.Mesh(rodGeom, material1)
-        const joint1 = new THREE.Mesh(jointGeom, material2)
-        scene.add(rod1)
-        scene.add(joint1)
-
-        const rod2 = new THREE.Mesh(rodGeom, material1)
-        const joint2 = new THREE.Mesh(jointGeom, material2)
-        scene.add(rod2)
-        scene.add(joint2)
-
-        // scene graph built from backend `scene` messages
-        const sceneGraphRoot = new THREE.Group()
-        scene.add(sceneGraphRoot)
-        // map body_id -> { group, links: { index: mesh } }
-        const bodyMap = new Map<number, any>()
-        sceneGraphRootRef.current = sceneGraphRoot
-        bodyMapRef.current = bodyMap
-
-        // helper: align a cylinder mesh between two 3D points
-        const tmpV1 = new THREE.Vector3()
-        const tmpV2 = new THREE.Vector3()
-        const tmpDir = new THREE.Vector3()
-        const up = new THREE.Vector3(0, 1, 0) // cylinder's default axis
-        function alignCylinderBetween(rod: THREE.Mesh, a: [number, number, number] | THREE.Vector3, b: [number, number, number] | THREE.Vector3, initialLength = 1.0) {
-            // convert inputs to Vector3
-            tmpV1.set((a as any)[0], (a as any)[1], (a as any)[2])
-            tmpV2.set((b as any)[0], (b as any)[1], (b as any)[2])
-            tmpDir.subVectors(tmpV2, tmpV1)
-            const len = tmpDir.length()
-            if (len <= 1e-6) {
-                rod.visible = false
-                return
-            }
-            // position at midpoint
-            rod.position.copy(tmpV1).add(tmpV2).multiplyScalar(0.5)
-            // scale the cylinder to match length (height axis is Y)
-            rod.scale.set(1, len / initialLength, 1)
-            // compute quaternion that rotates up -> dir
-            const q = new THREE.Quaternion().setFromUnitVectors(up, tmpDir.clone().normalize())
-            rod.quaternion.copy(q)
-            rod.visible = true
-        }
+        const root = new THREE.Group()
+        scene3.add(root)
+        sceneGraphRootRef.current = root
+        bodyMapRef.current = new Map()
 
         let lastFpsTime = performance.now()
         let frames = 0
 
-        function updateFromState() {
-            const s = stateRef.current
-            if (!s) return
-
-            // Base pivot (matches pybullet basePosition used in backend)
-            const basePivot = new THREE.Vector3(0, 0, 1.5)
-
-            // Prefer world positions from pybullet if available
-            if (s.pos1 || s.pos2) {
-                // convert centers reported by pybullet into link endpoints
-                if (s.pos1) {
-                    const c1 = new THREE.Vector3(s.pos1[0], s.pos1[1], s.pos1[2])
-                    // first link: top is basePivot, center is c1 => bottom = 2*c1 - top
-                    const top1 = basePivot.clone()
-                    const bottom1 = c1.clone().multiplyScalar(2).sub(top1)
-                    alignCylinderBetween(rod1, top1, bottom1, 1.0)
-                    joint1.position.copy(bottom1)
-                    joint1.visible = true
-                } else {
-                    rod1.visible = false
-                    joint1.visible = false
-                }
-
-                if (s.pos2) {
-                    const c2 = new THREE.Vector3(s.pos2[0], s.pos2[1], s.pos2[2])
-                    // second link top is the joint between link1 and link2. If pos1 present compute it,
-                    // otherwise assume top is basePivot (degenerate case)
-                    const top2 = s.pos1 ? new THREE.Vector3(s.pos1[0], s.pos1[1], s.pos1[2]).multiplyScalar(2).sub(basePivot) : basePivot.clone()
-                    const bottom2 = c2.clone().multiplyScalar(2).sub(top2)
-                    alignCylinderBetween(rod2, top2, bottom2, 1.0)
-                    joint2.position.copy(bottom2)
-                    joint2.visible = true
-                } else {
-                    rod2.visible = false
-                    joint2.visible = false
-                }
-
-                // follow camera behavior: smoothly move camera behind the first link (use joint or center)
-                if (cameraMode === 'follow' && s.pos1 && cameraRef.current && controlsRef.current) {
-                    const cam = cameraRef.current
-                    const controls = controlsRef.current
-                    const c1 = new THREE.Vector3(s.pos1[0], s.pos1[1], s.pos1[2])
-                    const desired = new THREE.Vector3(c1.x, c1.y - 2.2, c1.z + 1.2)
-                    cam.position.lerp(desired, 0.12)
-                    controls.target.lerp(c1, 0.18)
-                    controls.update()
-                }
-            } else if (s.theta !== undefined) {
-                // analytic single-pendulum fallback (no pybullet)
-                const theta = s.theta
-                const l = 1.0
-                const top = basePivot.clone()
-                const bottom = new THREE.Vector3(l * Math.sin(theta), 0, 1.5 - l * Math.cos(theta))
-                alignCylinderBetween(rod1, top, bottom, l)
-                joint1.position.copy(bottom)
-                joint1.visible = true
-                rod2.visible = false
-                joint2.visible = false
-            } else if (s.th1 !== undefined) {
-                // analytic double-pendulum fallback (angles only)
-                const th1 = s.th1
-                const th2 = s.th2
-                const l = 1.0
-                const top1 = basePivot.clone()
-                const bottom1 = new THREE.Vector3(l * Math.sin(th1), 0, 1.5 - l * Math.cos(th1))
-                alignCylinderBetween(rod1, top1, bottom1, l)
-                joint1.position.copy(bottom1)
-                joint1.visible = true
-
-                const top2 = bottom1.clone()
-                const bottom2 = new THREE.Vector3(bottom1.x + l * Math.sin(th2), 0, bottom1.z - l * Math.cos(th2))
-                alignCylinderBetween(rod2, top2, bottom2, l)
-                joint2.position.copy(bottom2)
-                joint2.visible = true
-            }
-        }
-
-        // apply incoming scene updates: create meshes for any new links
         function applySceneUpdate(incoming: any) {
             if (!incoming || !incoming.bodies) return
-            const root = sceneGraphRootRef.current
+            const rootLocal = sceneGraphRootRef.current
             const bodyMapLocal = bodyMapRef.current
-            if (!root || !bodyMapLocal) return
+            if (!rootLocal || !bodyMapLocal) return
             for (const body of incoming.bodies) {
                 const bid = body.body_id
                 let entry = bodyMapLocal.get(bid)
                 if (!entry) {
                     const g = new THREE.Group()
                     g.name = `body-${bid}`
-                    root.add(g)
+                    rootLocal.add(g)
                     entry = { group: g, links: new Map() }
                     bodyMapLocal.set(bid, entry)
                 }
-                // ensure link meshes exist
                 for (const link of body.links || []) {
                     const idx = link.link_index
                     if (entry.links.has(idx)) continue
-                    // determine geometry from visual metadata when possible
-                    let mesh: THREE.Mesh
                     const vis = link.visual
-                    if (vis && vis.dimensions && vis.dimensions.length >= 3) {
-                        const d = vis.dimensions
-                        const sx = Math.max(0.001, d[0] * 2)
-                        const sy = Math.max(0.001, d[1] * 2)
-                        const sz = Math.max(0.001, d[2] * 2)
-                        const geom = new THREE.BoxGeometry(sx, sy, sz)
-                        mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0x999999 }))
-                    } else {
-                        // fallback: small box
-                        const geom = new THREE.BoxGeometry(0.12, 0.12, 0.12)
-                        mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0x999999 }))
-                    }
+                    const mesh = buildMeshFromVisual(vis)
                     mesh.name = `body-${bid}-link-${idx}`
                     entry.group.add(mesh)
                     entry.links.set(idx, mesh)
@@ -251,10 +144,9 @@ export default function ThreeScene({ state, scene, onFps }: any) {
                 lastFpsTime = now
             }
 
-            updateFromState()
-            // apply any new scene meshes (call once per frame if needed)
+            // create meshes if new
             if (sceneRef.current) applySceneUpdate(sceneRef.current)
-            // update scene graph transforms from latest scene message if present
+            // update transforms
             const sc = sceneRef.current
             if (sc && sc.bodies) {
                 const bodyMapLocal = bodyMapRef.current
@@ -267,17 +159,29 @@ export default function ThreeScene({ state, scene, onFps }: any) {
                         if (!mesh) continue
                         const wp = link.world_position
                         const wo = link.world_orientation
-                        if (wp && wp.length === 3) {
-                            mesh.position.set(wp[0], wp[1], wp[2])
-                        }
-                        if (wo && wo.length === 4) {
-                            mesh.quaternion.set(wo[0], wo[1], wo[2], wo[3])
-                        }
+                        if (wp && wp.length === 3) mesh.position.set(wp[0], wp[1], wp[2])
+                        if (wo && wo.length === 4) mesh.quaternion.set(wo[0], wo[1], wo[2], wo[3])
+                    }
+                }
+                // optional follow camera: move behind first link of first body
+                if (cameraMode === 'follow' && sc.bodies.length > 0 && cameraRef.current && controlsRef.current) {
+                    const firstBody = sc.bodies[0]
+                    const firstLink = (firstBody.links && firstBody.links[0])
+                    if (firstLink && firstLink.world_position) {
+                        const wp = firstLink.world_position
+                        const c1 = new THREE.Vector3(wp[0], wp[1], wp[2])
+                        const cam = cameraRef.current
+                        const controls = controlsRef.current
+                        const desired = new THREE.Vector3(c1.x, c1.y - 2.2, c1.z + 1.2)
+                        cam.position.lerp(desired, 0.12)
+                        controls.target.lerp(c1, 0.18)
+                        controls.update()
                     }
                 }
             }
-            controls.update()
-            renderer.render(scene, camera)
+
+            controlsRef.current?.update()
+            renderer.render(scene3, camera)
             rafRef.current = requestAnimationFrame(animate)
         }
 
@@ -291,7 +195,6 @@ export default function ThreeScene({ state, scene, onFps }: any) {
             camera.updateProjectionMatrix()
             renderer.setSize(w, h)
         }
-        // initial size
         resize()
         window.addEventListener('resize', resize)
 
@@ -303,56 +206,29 @@ export default function ThreeScene({ state, scene, onFps }: any) {
         }
     }, [])
 
-    useEffect(() => {
-        // state updates handled in animate via closure
-    }, [state])
-
-    // Apply camera presets when cameraMode changes (or when reapplied)
+    // Apply camera presets when cameraMode changes
     function applyCameraMode(mode: 'orbit' | 'top' | 'side' | 'front' | 'follow') {
         const cam = cameraRef.current
         const controls = controlsRef.current
         if (!cam || !controls) return
         switch (mode) {
-            case 'top':
-                cam.position.set(0, 0, 6)
-                controls.target.set(0, 0, 1)
-                break
-            case 'side':
-                cam.position.set(6, 0, 1)
-                controls.target.set(0, 0, 1)
-                break
-            case 'front':
-                cam.position.set(0, -6, 1)
-                controls.target.set(0, 0, 1)
-                break
-            case 'orbit':
-                cam.position.set(0, -3.5, 2)
-                controls.target.set(0, 0, 1)
-                break
-            case 'follow':
-                // follow handled in updateFromState
-                break
+            case 'top': cam.position.set(0, 0, 6); controls.target.set(0, 0, 1); break
+            case 'side': cam.position.set(6, 0, 1); controls.target.set(0, 0, 1); break
+            case 'front': cam.position.set(0, -6, 1); controls.target.set(0, 0, 1); break
+            case 'orbit': cam.position.set(0, -3.5, 2); controls.target.set(0, 0, 1); break
+            case 'follow': break
         }
         cam.updateProjectionMatrix()
         controls.update()
-        // update state so UI reflects the active mode
         setCameraMode(mode)
     }
 
-    useEffect(() => {
-        // apply preset when cameraMode state changes
-        applyCameraMode(cameraMode)
-    }, [cameraMode])
+    useEffect(() => { applyCameraMode(cameraMode) }, [cameraMode])
 
     function CameraButton({ mode, title, svg }: { mode: 'orbit' | 'top' | 'side' | 'front' | 'follow'; title: string; svg: JSX.Element }) {
         const active = cameraMode === mode
         return (
-            <button
-                className={"cam-btn" + (active ? ' cam-btn--active' : '')}
-                aria-pressed={active}
-                title={title}
-                onClick={() => applyCameraMode(mode)}
-            >
+            <button className={"cam-btn" + (active ? ' cam-btn--active' : '')} aria-pressed={active} title={title} onClick={() => applyCameraMode(mode)}>
                 {svg}
             </button>
         )
@@ -362,57 +238,11 @@ export default function ThreeScene({ state, scene, onFps }: any) {
         return (
             <div className="camera-panel" onPointerDown={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', gap: 8 }}>
-                    <CameraButton
-                        mode={'orbit'}
-                        title="Orbit"
-                        svg={(
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.6" />
-                                <circle cx="12" cy="8" r="1.2" fill="currentColor" />
-                            </svg>
-                        )}
-                    />
-                    <CameraButton
-                        mode={'top'}
-                        title="Top"
-                        svg={(
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <rect x="5" y="5" width="14" height="6" stroke="currentColor" strokeWidth="1.6" rx="1" />
-                                <rect x="8" y="13" width="8" height="6" stroke="currentColor" strokeWidth="1.6" rx="1" />
-                            </svg>
-                        )}
-                    />
-                    <CameraButton
-                        mode={'side'}
-                        title="Side"
-                        svg={(
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M4 12h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                                <circle cx="18" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
-                            </svg>
-                        )}
-                    />
-                    <CameraButton
-                        mode={'front'}
-                        title="Front"
-                        svg={(
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <rect x="4" y="6" width="16" height="12" stroke="currentColor" strokeWidth="1.6" rx="1" />
-                                <circle cx="12" cy="12" r="2" fill="currentColor" />
-                            </svg>
-                        )}
-                    />
-                    <CameraButton
-                        mode={'follow'}
-                        title="Follow"
-                        svg={(
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12 3v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                                <path d="M12 18v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                                <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.6" />
-                            </svg>
-                        )}
-                    />
+                    <CameraButton mode={'orbit'} title="Orbit" svg={(<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.6" /><circle cx="12" cy="8" r="1.2" fill="currentColor" /></svg>)} />
+                    <CameraButton mode={'top'} title="Top" svg={(<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="14" height="6" stroke="currentColor" strokeWidth="1.6" rx="1" /><rect x="8" y="13" width="8" height="6" stroke="currentColor" strokeWidth="1.6" rx="1" /></svg>)} />
+                    <CameraButton mode={'side'} title="Side" svg={(<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="18" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>)} />
+                    <CameraButton mode={'front'} title="Front" svg={(<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="6" width="16" height="12" stroke="currentColor" strokeWidth="1.6" rx="1" /><circle cx="12" cy="12" r="2" fill="currentColor" /></svg>)} />
+                    <CameraButton mode={'follow'} title="Follow" svg={(<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M12 18v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.6" /></svg>)} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 8 }}>
                     <div className="stat-box card glass" style={{ padding: '6px 8px' }}>
@@ -424,17 +254,10 @@ export default function ThreeScene({ state, scene, onFps }: any) {
         )
     }
 
-    const opts = [
-        { value: 'orbit', label: 'Orbit' },
-        { value: 'top', label: 'Top' },
-        { value: 'side', label: 'Side' },
-        { value: 'front', label: 'Front' },
-        { value: 'follow', label: 'Follow' },
-    ]
-
     return (
         <div ref={mount} className="three-mount">
             <CameraUI />
         </div>
     )
 }
+
