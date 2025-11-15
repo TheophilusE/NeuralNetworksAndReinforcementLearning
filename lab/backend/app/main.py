@@ -37,6 +37,30 @@ async def websocket_endpoint(ws: WebSocket):
     stats_poller = None
     policies_dir = Path(__file__).resolve().parent.parent / "policies"
     policies_dir.mkdir(parents=True, exist_ok=True)
+    # Auto-start a simulator when a client connects so the frontend receives
+    # scene updates without requiring an explicit "start" message.
+    try:
+        try:
+            sim = PyBulletPendulum(mode="single", dt=0.02, gui=False)
+            engine = "pybullet"
+        except Exception:
+            # fallback to simple simulator if pybullet unavailable
+            sim = PendulumSimulator(mode="single", dt=0.02)
+            engine = "simple"
+        controller = NNController()
+        # create a minimal StartMessage so run_sim can read target/dt
+        start_msg = StartMessage(action="start", mode=sim.mode, controller="nn", dt=sim.dt, target=0.0)
+        asyncio.create_task(run_sim(ws, sim, controller, start_msg))
+        # send initial scene immediately if available
+        try:
+            if hasattr(sim, 'get_scene_tree'):
+                await ws.send_text(json.dumps({"scene": sim.get_scene_tree()}))
+        except Exception:
+            pass
+    except Exception:
+        # If auto-start fails, continue and allow explicit start messages
+        sim = None
+        controller = None
     try:
         while True:
             msg_text = await ws.receive_text()
@@ -48,6 +72,12 @@ async def websocket_endpoint(ws: WebSocket):
 
             action = msg.get("action")
             if action == "start":
+                # stop any existing simulator first
+                if sim:
+                    try:
+                        sim.running = False
+                    except Exception:
+                        pass
                 start = StartMessage(**msg)
                 engine = msg.get("engine", "simple")
                 # initialize simulator (choose pybullet or simple)
@@ -228,13 +258,18 @@ async def run_sim(ws: WebSocket, sim, controller, start):
                 "state": sim.get_state(),
                 "controller": "nn" if isinstance(controller, NNController) else "pid",
             }
-            # include scene updates for pybullet engine if supported
-            try:
-                if getattr(start, 'engine', 'simple') == 'pybullet' and hasattr(sim, 'get_scene_tree'):
+            # include scene updates whenever the simulator exposes a scene tree
+            if hasattr(sim, 'get_scene_tree'):
+                try:
                     msg['scene'] = sim.get_scene_tree()
-            except Exception:
-                # fall back to sending no scene on error
-                pass
+                except Exception:
+                    # Log scene serialization error for debugging and continue
+                    try:
+                        print(f"Scene serialization error", flush=True)
+                    except Exception:
+                        pass
+                    # continue without scene
+                    pass
             await ws.send_text(json.dumps(msg))
             await asyncio.sleep(sim.dt)
     except Exception as e:

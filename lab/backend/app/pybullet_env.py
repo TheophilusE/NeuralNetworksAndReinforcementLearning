@@ -1,6 +1,7 @@
 import pybullet as p
 import pybullet_data
 import numpy as np
+import base64
 import time
 
 
@@ -173,6 +174,24 @@ class PyBulletPendulum:
 
         # Collect visual shape metadata (may include base with linkIndex == -1)
         vis_map = {}
+        def _coerce_value(x):
+            # Convert numpy arrays/lists/tuples to lists, bytes to utf-8 or base64
+            if isinstance(x, (list, tuple, np.ndarray)):
+                return [ _coerce_value(xx) for xx in x ]
+            if isinstance(x, (bytes, bytearray)):
+                try:
+                    return x.decode('utf-8')
+                except Exception:
+                    return base64.b64encode(x).decode('ascii')
+            # memoryview -> bytes
+            if isinstance(x, memoryview):
+                try:
+                    b = x.tobytes()
+                    return _coerce_value(b)
+                except Exception:
+                    return None
+            return x
+
         try:
             vis = p.getVisualShapeData(self.body, physicsClientId=self.client)
             for v in vis:
@@ -187,11 +206,11 @@ class PyBulletPendulum:
                 rgba = v[7] if len(v) > 7 else None
                 vis_map[link_index] = {
                     "geom_type": int(geom_type) if geom_type is not None else None,
-                    "dimensions": list(dims) if isinstance(dims, (list, tuple, np.ndarray)) else dims,
-                    "filename": filename,
-                    "local_position": list(local_pos) if isinstance(local_pos, (list, tuple, np.ndarray)) else local_pos,
-                    "local_orientation": list(local_orn) if isinstance(local_orn, (list, tuple, np.ndarray)) else local_orn,
-                    "rgba": list(rgba) if isinstance(rgba, (list, tuple, np.ndarray)) else rgba,
+                    "dimensions": _coerce_value(dims),
+                    "filename": _coerce_value(filename),
+                    "local_position": _coerce_value(local_pos),
+                    "local_orientation": _coerce_value(local_orn),
+                    "rgba": _coerce_value(rgba),
                 }
         except Exception:
             vis_map = {}
