@@ -1,12 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 export default function StyledSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string }> }) {
     const [open, setOpen] = useState(false)
     const [highlight, setHighlight] = useState<number>(-1)
     const rootRef = useRef<HTMLDivElement | null>(null)
     const controlRef = useRef<HTMLButtonElement | null>(null)
+    const listRef = useRef<HTMLDivElement | null>(null)
     const justOpenedRef = useRef(false)
     const suppressToggleRef = useRef(false)
+    const [menuPos, setMenuPos] = useState<{ left: number; top: number; width: number } | null>(null)
 
     // close on outside pointer down (capture phase to avoid event ordering races)
     useEffect(() => {
@@ -15,7 +18,9 @@ export default function StyledSelect({ value, onChange, options }: { value: stri
             // ignore the immediate document event triggered when the control itself opens the menu
             if (justOpenedRef.current) return
             const path: EventTarget[] | undefined = (e as any).composedPath ? (e as any).composedPath() : undefined
-            const clickedInside = path ? (path as EventTarget[]).includes(rootRef.current as EventTarget) : rootRef.current.contains(e.target as Node)
+            const clickedInside = path
+                ? (path as EventTarget[]).includes(rootRef.current as EventTarget) || (listRef.current && (path as EventTarget[]).includes(listRef.current as EventTarget))
+                : rootRef.current.contains(e.target as Node) || (listRef.current && listRef.current.contains(e.target as Node))
             if (!clickedInside) {
                 setOpen(false)
             }
@@ -62,6 +67,23 @@ export default function StyledSelect({ value, onChange, options }: { value: stri
         }
     }
 
+    // compute & update menu position when opening or on resize/scroll
+    useEffect(() => {
+        function updatePos() {
+            const ctrl = controlRef.current
+            if (!ctrl) return
+            const r = ctrl.getBoundingClientRect()
+            setMenuPos({ left: r.left + window.scrollX, top: r.bottom + window.scrollY + 8, width: Math.max(r.width, 140) })
+        }
+        if (open) updatePos()
+        window.addEventListener('resize', updatePos)
+        window.addEventListener('scroll', updatePos, true)
+        return () => {
+            window.removeEventListener('resize', updatePos)
+            window.removeEventListener('scroll', updatePos, true)
+        }
+    }, [open])
+
     return (
         <div ref={rootRef} className="styled-select ui-top" onPointerDown={(e) => e.stopPropagation()}>
             <button
@@ -91,23 +113,39 @@ export default function StyledSelect({ value, onChange, options }: { value: stri
                 <div className="styled-select__label">{options.find((o) => o.value === value)?.label}</div>
                 <div className="styled-select__chev">▾</div>
             </button>
-
-            {open && (
-                <div className="styled-select__list pop ui-top" style={{ zIndex: 100000 }} role="listbox" aria-activedescendant={highlight >= 0 ? `styled-select-opt-${options[highlight].value}` : undefined} tabIndex={-1} onPointerDown={(e) => e.stopPropagation()}>
-                    {options.map((o, i) => (
-                        <div
-                            id={`styled-select-opt-${o.value}`}
-                            key={o.value}
-                            role="option"
-                            aria-selected={o.value === value}
-                            className={"styled-select__item " + (o.value === value ? 'styled-select__item--active' : '') + (i === highlight ? ' styled-select__item--highlight' : '')}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => { e.stopPropagation(); selectIndex(i) }}
-                        >
-                            {o.label}
-                        </div>
-                    ))}
-                </div>
+            {open && controlRef.current && (
+                createPortal(
+                    <div
+                        ref={listRef}
+                        className="styled-select__list pop ui-top"
+                        role="listbox"
+                        aria-activedescendant={highlight >= 0 ? `styled-select-opt-${options[highlight].value}` : undefined}
+                        tabIndex={-1}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'absolute',
+                            left: menuPos ? menuPos.left : 0,
+                            top: menuPos ? menuPos.top : 0,
+                            minWidth: menuPos ? menuPos.width : undefined,
+                            zIndex: 100000,
+                        }}
+                    >
+                        {options.map((o, i) => (
+                            <div
+                                id={`styled-select-opt-${o.value}`}
+                                key={o.value}
+                                role="option"
+                                aria-selected={o.value === value}
+                                className={"styled-select__item " + (o.value === value ? 'styled-select__item--active' : '') + (i === highlight ? ' styled-select__item--highlight' : '')}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={(e) => { e.stopPropagation(); selectIndex(i) }}
+                            >
+                                {o.label}
+                            </div>
+                        ))}
+                    </div>,
+                    document.body
+                )
             )}
         </div>
     )
