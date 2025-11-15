@@ -445,6 +445,49 @@ body {
 	box-shadow: 0 0 0 4px rgba(20, 140, 255, 0.12)
 }
 
+/* Global subtle hover animations for UI elements
+   - Apply a gentle lift + shadow to most interactive and card-like elements
+   - Keep existing specific :hover rules (they'll override these when present)
+   - Respect `prefers-reduced-motion` below
+*/
+.hover-animate, .overlay *:not(.three-mount) , .camera-panel * , .controls > * , .overlay-row > * , .card, .glass, .btn, .styled-select__control, .styled-select__item, .stat-box, .input, .select {
+	transition: transform 180ms cubic-bezier(.2,.9,.3,1), box-shadow 180ms cubic-bezier(.2,.9,.3,1), background-color 160ms ease, border-color 160ms ease;
+	will-change: transform, box-shadow, background-color;
+}
+
+.hover-animate:hover,
+.overlay *:hover ,
+.camera-panel *:hover ,
+.controls > *:hover ,
+.overlay-row > *:hover ,
+.card:hover,
+.glass:hover,
+.btn:hover,
+.styled-select__control:hover,
+.styled-select__item:hover,
+.stat-box:hover,
+.input:hover,
+.select:hover {
+	transform: translateY(-4px) scale(1.005);
+	box-shadow: 0 12px 34px rgba(16,24,40,0.18);
+}
+
+/* Provide a slightly stronger pop for clickable elements */
+.btn:hover,
+.camera-panel .cam-btn:hover,
+.styled-select__item:hover {
+	transform: translateY(-6px) scale(1.01);
+	box-shadow: 0 14px 40px rgba(16,24,40,0.20);
+}
+
+/* Subtle SVG/icon movement without affecting layout */
+.camera-panel svg, .btn svg {
+	transition: transform 220ms ease;
+}
+.camera-panel .cam-btn:hover svg, .btn:hover svg {
+	transform: translateY(-2px) scale(1.02);
+}
+
 /* Respect prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
 
@@ -461,5 +504,10 @@ body {
 	.btn:hover {
 		transform: none;
 		box-shadow: none
+	}
+
+	/* disable the global hover transforms when reduced motion is preferred */
+	.hover-animate, .overlay * , .camera-panel * , .controls > * , .overlay-row > * , .card, .glass, .btn, .styled-select__control, .styled-select__item, .stat-box, .input, .select {
+		transition: none;
 	}
 }
