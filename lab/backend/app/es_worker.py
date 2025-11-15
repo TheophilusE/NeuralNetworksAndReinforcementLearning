@@ -1,6 +1,6 @@
 import numpy as np
 from .controllers import NNController, TorchNNPolicy
-from .pybullet_env import PyBulletPendulum
+from .pybullet_env import PyBulletCartPole
 from .simulation import PendulumSimulator
 
 
@@ -23,7 +23,7 @@ def evaluate_params(flat_params: np.ndarray, policy_kind: str, policy_kwargs: di
     dt = sim_kwargs.get('dt', 0.02)
 
     if engine == 'pybullet':
-        sim = PyBulletPendulum(mode=mode, dt=dt, gui=False)
+        sim = PyBulletCartPole(mode=mode, dt=dt, gui=False)
     else:
         sim = PendulumSimulator(mode=mode, dt=dt)
 

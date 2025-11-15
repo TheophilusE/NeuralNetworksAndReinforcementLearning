@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from .simulation import PendulumSimulator
-from .pybullet_env import PyBulletPendulum
+from .pybullet_env import PyBulletCartPole
 from .models import StartMessage
 from .controllers import PIDController, NNController, TorchNNPolicy
 import numpy as np
@@ -43,8 +43,8 @@ async def websocket_endpoint(ws: WebSocket):
         # Auto-start two sims/controllers in parallel: PID (a) and NN (b).
         # Prefer PyBullet when available.
         try:
-            sim_a = PyBulletPendulum(mode="single", dt=0.02, gui=False)
-            sim_b = PyBulletPendulum(mode="single", dt=0.02, gui=False)
+            sim_a = PyBulletCartPole(mode="single", dt=0.02, gui=False)
+            sim_b = PyBulletCartPole(mode="single", dt=0.02, gui=False)
             engine = "pybullet"
         except Exception:
             # fallback to simple simulator if pybullet unavailable
@@ -105,7 +105,7 @@ async def websocket_endpoint(ws: WebSocket):
                 engine = msg.get("engine", "simple")
                 # initialize simulator (choose pybullet or simple)
                 if engine == "pybullet":
-                    sim = PyBulletPendulum(mode=start.mode, dt=start.dt, gui=msg.get("gui", False))
+                    sim = PyBulletCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False))
                 else:
                     sim = PendulumSimulator(mode=start.mode, dt=start.dt)
 
