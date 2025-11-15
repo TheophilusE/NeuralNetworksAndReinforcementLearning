@@ -21,6 +21,10 @@ export default function ThreeScene({ state, scene, onFps }: any) {
     const [gridVisible, setGridVisible] = useState<boolean>(true)
     const [serverIntervalMs, setServerIntervalMs] = useState<number | null>(null)
     const lastServerTsRef = useRef<number | null>(null)
+    const [mountedSize, setMountedSize] = useState<{ w: number; h: number } | null>(null)
+    const [animateStarted, setAnimateStarted] = useState<boolean>(false)
+    const [lastSceneAt, setLastSceneAt] = useState<number | null>(null)
+    const [lastSceneBodies, setLastSceneBodies] = useState<number | null>(null)
 
     useEffect(() => { stateRef.current = state
         try {
@@ -32,6 +36,20 @@ export default function ThreeScene({ state, scene, onFps }: any) {
     }, [state])
 
     useEffect(() => { sceneRef.current = scene }, [scene])
+
+    // track incoming scene updates for debugging
+    useEffect(() => {
+        if (!scene) return
+        try {
+            const now = performance.now()
+            setLastSceneAt(now)
+            const bodies = Array.isArray(scene.bodies) ? scene.bodies.length : 0
+            setLastSceneBodies(bodies)
+            console.log('[ThreeScene] received scene', bodies, 'bodies')
+        } catch (e) {
+            console.warn('[ThreeScene] scene parse error', e)
+        }
+    }, [scene])
 
     // helper: build a Three mesh from backend visual metadata
     function buildMeshFromVisual(vis: any) {
@@ -121,6 +139,9 @@ export default function ThreeScene({ state, scene, onFps }: any) {
 
     useEffect(() => {
         const el = mount.current!
+        console.log('[ThreeScene] mount element', el)
+        console.log('[ThreeScene] mount size', el.clientWidth, 'x', el.clientHeight)
+        setMountedSize({ w: el.clientWidth, h: el.clientHeight })
         const scene3 = new THREE.Scene()
         scene3.background = new THREE.Color(0xeef6ff)
 
@@ -159,6 +180,18 @@ export default function ThreeScene({ state, scene, onFps }: any) {
         const grid = new THREE.GridHelper(10, 20, 0x888888, 0xdddddd)
         scene3.add(grid)
         gridRef.current = grid
+
+        // Debug helpers: axis and a small colored cube at origin to verify rendering
+        const axes = new THREE.AxesHelper(0.6)
+        scene3.add(axes)
+
+        const debugMat = new THREE.MeshStandardMaterial({ color: 0xff3366, metalness: 0.2, roughness: 0.4 })
+        const debugGeom = new THREE.BoxGeometry(0.3, 0.3, 0.3)
+        const debugCube = new THREE.Mesh(debugGeom, debugMat)
+        debugCube.position.set(0, 0, 0.15)
+        debugCube.castShadow = true
+        debugCube.receiveShadow = true
+        scene3.add(debugCube)
 
         const root = new THREE.Group()
         scene3.add(root)
@@ -199,6 +232,10 @@ export default function ThreeScene({ state, scene, onFps }: any) {
         }
 
         function animate() {
+            if (frames === 0) {
+                console.log('[ThreeScene] animate loop starting')
+                setAnimateStarted(true)
+            }
             frames++
             const now = performance.now()
             const dt = now - lastFpsTime
@@ -258,19 +295,24 @@ export default function ThreeScene({ state, scene, onFps }: any) {
 
         const resize = () => {
             if (!mount.current) return
-            const w = mount.current.clientWidth
-            const h = mount.current.clientHeight
+            const w = mount.current.clientWidth || window.innerWidth
+            const h = mount.current.clientHeight || window.innerHeight
+            if (w <= 0 || h <= 0) return
             camera.aspect = w / h
             camera.updateProjectionMatrix()
             renderer.setSize(w, h)
         }
         resize()
         window.addEventListener('resize', resize)
+        // observe mount size changes (handles layout timing and container resizing)
+        const ro = new ResizeObserver(() => resize())
+        ro.observe(el)
 
         return () => {
             if (rafRef.current) cancelAnimationFrame(rafRef.current)
             renderer.dispose()
             window.removeEventListener('resize', resize)
+            try { ro.disconnect() } catch {}
             if (el && renderer.domElement) el.removeChild(renderer.domElement)
         }
     }, [])
@@ -361,6 +403,18 @@ export default function ThreeScene({ state, scene, onFps }: any) {
 
     return (
         <div ref={mount} className="three-mount">
+            <div style={{ position: 'absolute', left: 12, top: 12, zIndex: 10000 }}>
+                <div className="glass card" style={{ padding: '6px 8px', minWidth: 160 }}>
+                    <div style={{ fontSize: 12, marginBottom: 6 }}><strong>ThreeScene</strong></div>
+                    <div style={{ fontSize: 12 }}>mounted: {mountedSize ? `${mountedSize.w} x ${mountedSize.h}` : '—'}</div>
+                    <div style={{ fontSize: 12 }}>animate: {animateStarted ? 'yes' : 'no'}</div>
+                        <div style={{ fontSize: 12 }}>shadows: {shadowsEnabled ? 'on' : 'off'}</div>
+                        <div style={{ fontSize: 12 }}>wireframe: {wireframeEnabled ? 'on' : 'off'}</div>
+                        <div style={{ fontSize: 12 }}>grid: {gridVisible ? 'on' : 'off'}</div>
+                        <div style={{ fontSize: 12, marginTop: 6 }}><strong>Scene:</strong> {lastSceneBodies != null ? `${lastSceneBodies} bodies` : 'no data'}</div>
+                        <div style={{ fontSize: 11, color: '#333' }}>{lastSceneAt ? `last @ ${Math.round(lastSceneAt)} ms` : ''}</div>
+                </div>
+            </div>
             <div style={{ position: 'absolute', right: 12, top: 12, zIndex: 30 }}>
                     <CameraUI />
                 </div>
