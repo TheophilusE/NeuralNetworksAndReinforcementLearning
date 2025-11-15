@@ -3,6 +3,7 @@ import ThreeScene from './ThreeScene'
 import UIOverlay from './UIOverlay'
 import StatsSidebar from './StatsSidebar'
 import PendulumCompare from './PendulumCompare'
+import PendulumLive from './PendulumLive'
 
 type Mode = 'single' | 'double'
 type Controller = 'pid' | 'nn'
@@ -154,7 +155,7 @@ export default function App() {
         <pre className="glass card slide-up ui-top" style={{ padding: 8, maxWidth: 420, overflow: 'auto' }}>{JSON.stringify(state, null, 2)}</pre>
       </div>
       <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 100000, width: 720 }}>
-        <PendulumCompare />
+        <PendulumLive ws={ws} />
       </div>
     </div>
   )

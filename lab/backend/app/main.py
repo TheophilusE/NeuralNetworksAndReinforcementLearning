@@ -40,25 +40,44 @@ async def websocket_endpoint(ws: WebSocket):
     # Auto-start a simulator when a client connects so the frontend receives
     # scene updates without requiring an explicit "start" message.
     try:
+        # Auto-start two sims/controllers in parallel: PID (a) and NN (b).
+        # Prefer PyBullet when available.
         try:
-            sim = PyBulletPendulum(mode="single", dt=0.02, gui=False)
+            sim_a = PyBulletPendulum(mode="single", dt=0.02, gui=False)
+            sim_b = PyBulletPendulum(mode="single", dt=0.02, gui=False)
             engine = "pybullet"
         except Exception:
             # fallback to simple simulator if pybullet unavailable
-            sim = PendulumSimulator(mode="single", dt=0.02)
+            sim_a = PendulumSimulator(mode="single", dt=0.02)
+            sim_b = PendulumSimulator(mode="single", dt=0.02)
             engine = "simple"
-        # Use a PID controller by default for auto-start so the pendulum shows
-        # active behavior immediately (NNController may produce near-zero outputs
-        # from random weights). Use a non-zero target so the controller applies
-        # torque and the visuals move.
-        controller = PIDController(kp=30.0, ki=0.0, kd=2.0)
-        # create a minimal StartMessage so run_sim can read target/dt
-        start_msg = StartMessage(action="start", mode=sim.mode, controller="pid", dt=sim.dt, target=0.2)
-        asyncio.create_task(run_sim(ws, sim, controller, start_msg))
-        # send initial scene immediately if available
+
+        # PID controller for A, NN for B (torch preferred)
+        ctrl_a = PIDController(kp=30.0, ki=0.0, kd=2.0)
         try:
-            if hasattr(sim, 'get_scene_tree'):
-                await ws.send_text(json.dumps({"scene": sim.get_scene_tree()}))
+            ctrl_b = TorchNNPolicy()
+        except Exception:
+            ctrl_b = NNController()
+
+        # Best-effort: align initial states
+        try:
+            if hasattr(sim_a, 'theta'):
+                sim_a.theta = 0.2
+                sim_b.theta = 0.2
+            else:
+                import pybullet as _p
+                if getattr(sim_a, 'n_joints', 0) > 0:
+                    _p.resetJointState(sim_a.body, 0, 0.2, targetVelocity=0, physicsClientId=sim_a.client)
+                    _p.resetJointState(sim_b.body, 0, 0.2, targetVelocity=0, physicsClientId=sim_b.client)
+        except Exception:
+            pass
+
+        # Start parallel run and send scene from sim_a if available
+        start_msg = StartMessage(action="start", mode=sim_a.mode, controller="pid", dt=sim_a.dt, target=0.0)
+        asyncio.create_task(run_contest(ws, sim_a, sim_b, ctrl_a, ctrl_b, target=0.0))
+        try:
+            if hasattr(sim_a, 'get_scene_tree'):
+                await ws.send_text(json.dumps({"scene": sim_a.get_scene_tree()}))
         except Exception:
             pass
     except Exception:
