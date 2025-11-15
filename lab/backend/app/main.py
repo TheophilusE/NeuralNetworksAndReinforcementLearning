@@ -76,6 +76,13 @@ async def websocket_endpoint(ws: WebSocket):
 
                 # run simulation loop in background
                 asyncio.create_task(run_sim(ws, sim, controller, start))
+                # send an initial scene description to the client so the frontend can
+                # replicate the pybullet scene tree (bodies, links, visuals)
+                try:
+                    if engine == "pybullet" and hasattr(sim, 'get_scene_tree'):
+                        await ws.send_text(json.dumps({"scene": sim.get_scene_tree()}))
+                except Exception as e:
+                    await ws.send_text(json.dumps({"scene_error": str(e)}))
             elif action == "stop":
                 if sim:
                     sim.running = False

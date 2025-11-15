@@ -158,3 +158,82 @@ class PyBulletPendulum:
 
     def close(self):
         p.disconnect(physicsClientId=self.client)
+
+    def get_scene_tree(self):
+        """Return a serializable representation of the PyBullet scene for frontend replication.
+
+        The returned structure contains bodies (here the single pendulum body), the
+        base transform and a list of links with world transforms and basic visual shape
+        metadata when available.
+        """
+        try:
+            base_pos, base_orn = p.getBasePositionAndOrientation(self.body, physicsClientId=self.client)
+        except Exception:
+            base_pos, base_orn = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]
+
+        # Collect visual shape metadata (may include base with linkIndex == -1)
+        vis_map = {}
+        try:
+            vis = p.getVisualShapeData(self.body, physicsClientId=self.client)
+            for v in vis:
+                # tuple layout varies slightly across pybullet versions; be defensive
+                # typical: (objectUniqueId, linkIndex, visualGeometryType, dimensions, filename, localPos, localOrn, rgba)
+                link_index = v[1]
+                geom_type = v[2] if len(v) > 2 else None
+                dims = v[3] if len(v) > 3 else None
+                filename = v[4] if len(v) > 4 else None
+                local_pos = v[5] if len(v) > 5 else None
+                local_orn = v[6] if len(v) > 6 else None
+                rgba = v[7] if len(v) > 7 else None
+                vis_map[link_index] = {
+                    "geom_type": int(geom_type) if geom_type is not None else None,
+                    "dimensions": list(dims) if isinstance(dims, (list, tuple, np.ndarray)) else dims,
+                    "filename": filename,
+                    "local_position": list(local_pos) if isinstance(local_pos, (list, tuple, np.ndarray)) else local_pos,
+                    "local_orientation": list(local_orn) if isinstance(local_orn, (list, tuple, np.ndarray)) else local_orn,
+                    "rgba": list(rgba) if isinstance(rgba, (list, tuple, np.ndarray)) else rgba,
+                }
+        except Exception:
+            vis_map = {}
+
+        # Build link list including base (-1) and joint links
+        links = []
+        try:
+            nlinks = p.getNumJoints(self.body, physicsClientId=self.client)
+        except Exception:
+            nlinks = getattr(self, 'n_joints', 0)
+
+        # base entry
+        links.append({
+            "link_index": -1,
+            "world_position": list(base_pos),
+            "world_orientation": list(base_orn),
+            "visual": vis_map.get(-1),
+        })
+
+        for i in range(nlinks):
+            try:
+                ls = p.getLinkState(self.body, i, physicsClientId=self.client)
+                # choose indices that are most commonly available (pos, orn)
+                pos = ls[0] if len(ls) > 0 else None
+                orn = ls[1] if len(ls) > 1 else None
+            except Exception:
+                pos, orn = None, None
+            links.append({
+                "link_index": int(i),
+                "world_position": list(pos) if isinstance(pos, (list, tuple, np.ndarray)) else pos,
+                "world_orientation": list(orn) if isinstance(orn, (list, tuple, np.ndarray)) else orn,
+                "visual": vis_map.get(i),
+            })
+
+        scene = {
+            "bodies": [
+                {
+                    "body_id": int(self.body),
+                    "base_position": list(base_pos),
+                    "base_orientation": list(base_orn),
+                    "links": links,
+                }
+            ]
+        }
+        return scene
