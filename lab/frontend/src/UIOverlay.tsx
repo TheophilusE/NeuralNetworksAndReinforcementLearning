@@ -12,6 +12,8 @@ type Props = {
   onChangeController: (c: 'pid' | 'nn') => void
   target?: number
   onChangeTarget?: (t: number) => void
+  useDegrees?: boolean
+  onChangeUseDegrees?: (b: boolean) => void
   kp: number
   ki: number
   kd: number
@@ -32,6 +34,8 @@ export default function UIOverlay({
   onChangeMode,
   onChangeController,
   target,
+  useDegrees,
+  onChangeUseDegrees,
   onChangeTarget,
   fps,
   kp,
@@ -45,7 +49,14 @@ export default function UIOverlay({
   currentPolicyName,
 }: Props) {
   const [policyName, setPolicyName] = useState('default')
-  const displayTarget = target === undefined || target === null || Number.isNaN(target) ? '' : String(target)
+  // support both controlled (via props) and uncontrolled (local) modes for the deg toggle
+  const [localUseDegrees, setLocalUseDegrees] = useState(false)
+  const effectiveUseDegrees = typeof useDegrees === 'boolean' ? useDegrees : localUseDegrees
+  // show empty string when value is invalid
+  const displayTarget = (() => {
+    if (target === undefined || target === null || Number.isNaN(target)) return ''
+    return effectiveUseDegrees ? String((target * 180 / Math.PI).toFixed(2)) : String(target)
+  })()
   
 
   return (
@@ -61,17 +72,42 @@ export default function UIOverlay({
         </label>
         <label style={labelStyle}>
           Target
-          <input
-            className="input focus-ring"
-            type="number"
-            value={displayTarget}
-            step="0.05"
-            onChange={(e) => {
-              if (!onChangeTarget) return
-              const v = parseFloat(e.target.value)
-              onChangeTarget(Number.isNaN(v) ? 0 : v)
-            }}
-          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="input focus-ring"
+              type="number"
+              value={displayTarget}
+              step={effectiveUseDegrees ? '0.5' : '0.01'}
+              onChange={(e) => {
+                if (!onChangeTarget) return
+                const raw = e.target.value
+                const v = parseFloat(raw)
+                if (Number.isNaN(v)) {
+                  onChangeTarget(0)
+                  return
+                }
+                if (effectiveUseDegrees) {
+                  // convert degrees -> radians
+                  onChangeTarget((v * Math.PI) / 180)
+                } else {
+                  onChangeTarget(v)
+                }
+              }}
+              style={{ width: 120 }}
+            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={effectiveUseDegrees}
+                onChange={(e) => {
+                  const v = e.target.checked
+                  if (onChangeUseDegrees) onChangeUseDegrees(v)
+                  else setLocalUseDegrees(v)
+                }}
+              />
+              <span>deg</span>
+            </label>
+          </div>
         </label>
         <button className="btn fade-in" onClick={onTrainStart}>
           Train Start

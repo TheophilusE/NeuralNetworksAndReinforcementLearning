@@ -2,9 +2,11 @@ import React, { useEffect, useRef } from 'react'
 
 type Props = {
   ws: WebSocket | null
+  target?: number
+  useDegrees?: boolean
 }
 
-export default function PendulumLive({ ws }: Props) {
+export default function PendulumLive({ ws, target, useDegrees }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dataRef = useRef<number[]>([])
   const maxLen = 800
@@ -33,23 +35,23 @@ export default function PendulumLive({ ws }: Props) {
   // Auto-start simulation when WebSocket is ready
   useEffect(() => {
     if (!ws) return
-    const startPayload = JSON.stringify({ action: 'start', mode: 'single', controller: 'pid', dt: 0.02, target: 0.0, engine: 'pybullet' })
-    const tryStart = () => {
+    const buildAndSend = () => {
+      const payload = JSON.stringify({ action: 'start', mode: 'single', controller: 'pid', dt: 0.02, target: typeof target === 'number' ? target : 0.0, engine: 'pybullet' })
       try {
-        if (ws.readyState === WebSocket.OPEN) ws.send(startPayload)
+        if (ws.readyState === WebSocket.OPEN) ws.send(payload)
       } catch (e) {
         // ignore send errors
       }
     }
     // If already open, send immediately; otherwise wait for open
     if (ws.readyState === WebSocket.OPEN) {
-      tryStart()
+      buildAndSend()
     } else {
-      const onOpen = () => tryStart()
+      const onOpen = () => buildAndSend()
       ws.addEventListener('open', onOpen)
       return () => ws.removeEventListener('open', onOpen)
     }
-  }, [ws])
+  }, [ws, target])
 
   useEffect(() => {
     let raf = 0
@@ -95,12 +97,51 @@ export default function PendulumLive({ ws }: Props) {
       ctx.moveTo(0, y0)
       ctx.lineTo(w, y0)
       ctx.stroke()
+      // draw target line and label if available
+      if (typeof target === 'number' && Number.isFinite(target)) {
+        const yT = h - ((target - min) / span) * h
+        const y = Math.max(0, Math.min(h, yT))
+        // dashed line
+        ctx.save()
+        ctx.setLineDash([6, 4])
+        ctx.strokeStyle = 'rgba(255,200,0,0.9)'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(w, y)
+        ctx.stroke()
+        ctx.setLineDash([])
+        // draw tick / marker at right
+        ctx.fillStyle = 'rgba(255,200,0,0.95)'
+        ctx.beginPath()
+        ctx.arc(w - 10, y, 4, 0, Math.PI * 2)
+        ctx.fill()
+
+        // draw label box
+        const radText = `${target.toFixed(2)} rad`
+        const degText = `${(target * 180 / Math.PI).toFixed(1)}°`
+        ctx.font = '12px system-ui, Arial'
+        const padding = 6
+        const txt = radText
+        const metrics = ctx.measureText(txt)
+        const boxW = Math.max(metrics.width, ctx.measureText(degText).width) + padding * 2
+        const boxH = 32
+        const bx = Math.max(w - boxW - 12, w - boxW - 12)
+        const by = Math.max(6, Math.min(h - boxH - 6, y - boxH / 2))
+        // background
+        ctx.fillStyle = 'rgba(4,36,58,0.95)'
+        ctx.fillRect(bx, by, boxW, boxH)
+        ctx.fillStyle = 'rgba(255,255,255,0.95)'
+        ctx.fillText(radText, bx + padding, by + 14)
+        ctx.fillText(degText, bx + padding, by + 28)
+        ctx.restore()
+      }
 
       raf = requestAnimationFrame(draw)
     }
     raf = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(raf)
-  }, [])
+  }, [target, useDegrees])
 
   // intentionally no start/stop controls; sim is always running
 
@@ -108,7 +149,7 @@ export default function PendulumLive({ ws }: Props) {
     <div style={{ width: '100%', height: 220 }}>
       <div className="glass card slide-up ui-top" style={{ padding: 8, borderRadius: 8 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#04243a' }}>Pendulum - Theta (rad)</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#04243a' }}>Pendulum - Theta ({useDegrees ? 'deg' : 'rad'})</div>
           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#666' }}>Auto-running</div>
         </div>
         <div style={{ width: '100%', height: 160, borderRadius: 6, overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' }}>

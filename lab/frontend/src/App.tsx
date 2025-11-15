@@ -13,6 +13,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('single')
   const [controller, setController] = useState<Controller>('pid')
   const [target, setTarget] = useState<number>(0.0)
+  const [useDegrees, setUseDegrees] = useState<boolean>(false)
   const [state, setState] = useState<any>(null)
   const [scene, setScene] = useState<any>(null)
   const [fps, setFps] = useState<number | undefined>(undefined)
@@ -176,6 +177,8 @@ export default function App() {
         mode={mode}
         controller={controller}
         target={target}
+        useDegrees={useDegrees}
+        onChangeUseDegrees={(b: boolean) => setUseDegrees(b)}
         onChangeTarget={(t) => setTarget(t)}
         running={running}
         onTrainStart={() => ws?.send(JSON.stringify({ action: 'train_start' }))}
@@ -198,7 +201,7 @@ export default function App() {
         <pre className="glass card slide-up ui-top" style={{ padding: 8, maxWidth: 420, overflow: 'auto' }}>{JSON.stringify(state, null, 2)}</pre>
       </div>
       <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 100200, width: 720 }}>
-        <PendulumLive ws={ws} />
+        <PendulumLive ws={ws} target={target} useDegrees={useDegrees} />
       </div>
     </div>
   )
