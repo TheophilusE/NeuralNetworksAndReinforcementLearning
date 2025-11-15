@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 
 type Props = {
   ws: WebSocket | null
@@ -8,7 +8,7 @@ export default function PendulumLive({ ws }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dataRef = useRef<number[]>([])
   const maxLen = 800
-  const [running, setRunning] = useState(false)
+  // The simulation is auto-started; no local running state needed
 
   useEffect(() => {
     if (!ws) return
@@ -28,6 +28,27 @@ export default function PendulumLive({ ws }: Props) {
     }
     ws.addEventListener('message', onMsg)
     return () => ws.removeEventListener('message', onMsg)
+  }, [ws])
+
+  // Auto-start simulation when WebSocket is ready
+  useEffect(() => {
+    if (!ws) return
+    const startPayload = JSON.stringify({ action: 'start', mode: 'single', controller: 'pid', dt: 0.02, target: 0.0, engine: 'pybullet' })
+    const tryStart = () => {
+      try {
+        if (ws.readyState === WebSocket.OPEN) ws.send(startPayload)
+      } catch (e) {
+        // ignore send errors
+      }
+    }
+    // If already open, send immediately; otherwise wait for open
+    if (ws.readyState === WebSocket.OPEN) {
+      tryStart()
+    } else {
+      const onOpen = () => tryStart()
+      ws.addEventListener('open', onOpen)
+      return () => ws.removeEventListener('open', onOpen)
+    }
   }, [ws])
 
   useEffect(() => {
@@ -81,29 +102,12 @@ export default function PendulumLive({ ws }: Props) {
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  const startSim = () => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    // start single-sim with pybullet on backend
-    ws.send(JSON.stringify({ action: 'start', mode: 'single', controller: 'pid', dt: 0.02, target: 0.0, engine: 'pybullet' }))
-    setRunning(true)
-  }
-
-  const stopSim = () => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    ws.send(JSON.stringify({ action: 'stop' }))
-    setRunning(false)
-  }
+  // intentionally no start/stop controls; sim is always running
 
   return (
     <div style={{ width: '100%', height: 220 }}>
       <div style={{ display: 'flex', gap: 8, padding: 6, alignItems: 'center' }}>
-        <button className="btn" onClick={startSim} disabled={running || !ws}>
-          Start PyBullet Sim
-        </button>
-        <button className="btn" onClick={stopSim} disabled={!running || !ws}>
-          Stop
-        </button>
-        <div style={{ marginLeft: 'auto', color: '#ddd' }}>Showing theta over time</div>
+        <div style={{ marginLeft: 0, color: '#ddd' }}>Simulation running (auto-started)</div>
       </div>
       <canvas ref={canvasRef} width={900} height={160} style={{ width: '100%', height: 160, background: '#041014' }} />
     </div>
