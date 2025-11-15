@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import ThreeScene from './ThreeScene'
 import UIOverlay from './UIOverlay'
 import StatsSidebar from './StatsSidebar'
+import PendulumCompare from './PendulumCompare'
 
 type Mode = 'single' | 'double'
 type Controller = 'pid' | 'nn'
@@ -151,6 +152,9 @@ export default function App() {
       <StatsSidebar stats={trainingStats || { iter: 0, last_reward: null, history: [] }} docked={true} />
       <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 100000 }}>
         <pre className="glass card slide-up ui-top" style={{ padding: 8, maxWidth: 420, overflow: 'auto' }}>{JSON.stringify(state, null, 2)}</pre>
+      </div>
+      <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 100000, width: 720 }}>
+        <PendulumCompare />
       </div>
     </div>
   )

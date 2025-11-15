@@ -284,3 +284,53 @@ async def run_sim(ws: WebSocket, sim, controller, start):
             await asyncio.sleep(sim.dt)
     except Exception as e:
         await ws.send_text(json.dumps({"error": str(e)}))
+
+
+async def run_contest(ws: WebSocket, sim_a, sim_b, ctrl_a, ctrl_b, target=0.0):
+    """Run two simulators/controllers in parallel and stream combined telemetry."""
+    sim_a.running = True
+    sim_b.running = True
+    t = 0.0
+    try:
+        while getattr(sim_a, 'running', True) and getattr(sim_b, 'running', True):
+            # compute controls for each
+            state_a = sim_a.get_state()
+            state_b = sim_b.get_state()
+            try:
+                tau_a = ctrl_a.get_torque(state_a, target=target)
+            except Exception:
+                tau_a = 0.0
+            try:
+                tau_b = ctrl_b.get_torque(state_b, target=target)
+            except Exception:
+                tau_b = 0.0
+
+            # step sims
+            try:
+                sim_a.step(tau_a)
+            except Exception:
+                pass
+            try:
+                sim_b.step(tau_b)
+            except Exception:
+                pass
+
+            t += getattr(sim_a, 'dt', getattr(sim_b, 'dt', 0.02))
+
+            msg = {
+                "t": t,
+                "a": {"state": sim_a.get_state(), "tau": float(tau_a)},
+                "b": {"state": sim_b.get_state(), "tau": float(tau_b)},
+            }
+            try:
+                await ws.send_text(json.dumps(msg))
+            except Exception:
+                # If sending fails, stop contest
+                break
+
+            await asyncio.sleep(getattr(sim_a, 'dt', getattr(sim_b, 'dt', 0.02)))
+    except Exception as e:
+        try:
+            await ws.send_text(json.dumps({"error": str(e)}))
+        except Exception:
+            pass
