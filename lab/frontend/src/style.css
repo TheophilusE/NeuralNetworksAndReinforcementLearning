@@ -158,7 +158,9 @@ body {
 /* Custom styled select dropdown to avoid native dropdown flicker and allow full styling */
 .styled-select {
 	position: relative;
-	min-width: 140px;
+	/* allow the control to size to its content instead of forcing 140px */
+	min-width: 0;
+	width: auto;
 }
 
 .styled-select__control {
@@ -200,7 +202,9 @@ body {
 	position: absolute;
 	right: 0;
 	top: calc(100% + 8px);
-	min-width: 140px;
+	/* let the list size to its content by default; JS portal may override */
+	min-width: 0;
+	width: max-content;
 	background: #eef6ff;
 	/* match scene background */
 	border: 1px solid rgba(6, 60, 160, 0.06);

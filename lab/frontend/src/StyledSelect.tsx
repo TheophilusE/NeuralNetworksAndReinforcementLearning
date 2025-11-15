@@ -9,7 +9,7 @@ export default function StyledSelect({ value, onChange, options }: { value: stri
     const listRef = useRef<HTMLDivElement | null>(null)
     const justOpenedRef = useRef(false)
     const suppressToggleRef = useRef(false)
-    const [menuPos, setMenuPos] = useState<{ left: number; top: number; width: number } | null>(null)
+    const [menuPos, setMenuPos] = useState<{ left: number; top: number; width?: number } | null>(null)
 
     // close on outside pointer down (capture phase to avoid event ordering races)
     useEffect(() => {
@@ -73,7 +73,8 @@ export default function StyledSelect({ value, onChange, options }: { value: stri
             const ctrl = controlRef.current
             if (!ctrl) return
             const r = ctrl.getBoundingClientRect()
-            setMenuPos({ left: r.left + window.scrollX, top: r.bottom + window.scrollY + 8, width: Math.max(r.width, 140) })
+            // do not force a width so the dropdown can size to its content
+            setMenuPos({ left: r.left + window.scrollX, top: r.bottom + window.scrollY + 8 })
         }
         if (open) updatePos()
         window.addEventListener('resize', updatePos)
@@ -126,7 +127,6 @@ export default function StyledSelect({ value, onChange, options }: { value: stri
                             position: 'absolute',
                             left: menuPos ? menuPos.left : 0,
                             top: menuPos ? menuPos.top : 0,
-                            minWidth: menuPos ? menuPos.width : undefined,
                             zIndex: 100000,
                         }}
                     >
