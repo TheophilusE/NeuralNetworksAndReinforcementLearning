@@ -5,8 +5,7 @@ type Props = {
   mode: 'single' | 'double'
   controller: 'pid' | 'nn'
   running: boolean
-  onStart: () => void
-  onStop: () => void
+  // server now streams continuously; no start/stop from UI
   onTrainStart: () => void
   onTrainStop: () => void
   onChangeMode: (m: 'single' | 'double') => void
@@ -26,9 +25,6 @@ type Props = {
 export default function UIOverlay({
   mode,
   controller,
-  running,
-  onStart,
-  onStop,
   onTrainStart,
   onTrainStop,
   onChangeMode,
@@ -62,20 +58,7 @@ export default function UIOverlay({
           Controller
           <StyledSelect value={controller} onChange={(v) => onChangeController(v as any)} options={[{ value: 'pid', label: 'PID' }, { value: 'nn', label: 'NN' }]} />
         </label>
-        <label style={labelStyle}>
-          Target
-          <input className="input focus-ring" type="number" value={target} step="0.1" onChange={(e) => setTarget(parseFloat(e.target.value))} />
-        </label>
-        <button className="btn btn--primary fade-in" onClick={onStart} disabled={running}>
-          Start
-        </button>
-        <button
-          className={"btn btn--danger " + (running ? 'pulse' : 'fade-in')}
-          onClick={onStop}
-          disabled={!running}
-        >
-          Stop
-        </button>
+        {/* server streams automatically; no Start/Stop controls */}
         <button className="btn fade-in" onClick={onTrainStart}>
           Train Start
         </button>

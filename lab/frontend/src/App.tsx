@@ -83,9 +83,6 @@ export default function App() {
       <UIOverlay
         mode={mode}
         controller={controller}
-        running={running}
-        onStart={() => start()}
-        onStop={() => stop()}
         onTrainStart={() => ws?.send(JSON.stringify({ action: 'train_start' }))}
         onTrainStop={() => ws?.send(JSON.stringify({ action: 'train_stop' }))}
         onChangeMode={(m) => setMode(m)}
