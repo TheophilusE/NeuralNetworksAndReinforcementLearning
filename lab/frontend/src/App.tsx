@@ -26,9 +26,27 @@ export default function App() {
     let sock: WebSocket | null = null
     let reconnectTimer: number | null = null
 
-    const connect = () => {
+    const connect = async () => {
       if (!mounted) return
-      sock = new WebSocket('ws://localhost:8000/ws')
+      // Do a quick health check before creating a WebSocket to avoid
+      // noisy browser errors when the backend isn't up yet.
+      try {
+        const res = await fetch('http://localhost:8000/health', { cache: 'no-store' })
+        if (!res.ok) throw new Error('health check failed')
+      } catch (err) {
+        // Backend not ready; schedule reconnect
+        reconnectTimer = window.setTimeout(() => connect(), 1000)
+        return
+      }
+
+      try {
+        sock = new WebSocket('ws://localhost:8000/ws')
+      } catch (e) {
+        // Some environments may throw synchronously (rare); schedule reconnect
+        console.warn('failed to construct WebSocket, will retry', e)
+        reconnectTimer = window.setTimeout(() => connect(), 1000)
+        return
+      }
 
       const sendStart = () => {
         if (!sock || sock.readyState !== WebSocket.OPEN) return
@@ -159,6 +177,7 @@ export default function App() {
         controller={controller}
         target={target}
         onChangeTarget={(t) => setTarget(t)}
+        running={running}
         onTrainStart={() => ws?.send(JSON.stringify({ action: 'train_start' }))}
         onTrainStop={() => ws?.send(JSON.stringify({ action: 'train_stop' }))}
         onChangeMode={(m) => setMode(m)}
