@@ -2,7 +2,13 @@ import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
-export default function ThreeScene({ state, onFps }: any) {
+export default function ThreeScene({ state, scene, onFps }: any) {
+    // maintain a ref to latest scene messages
+    const sceneRef = useRef<any>(null)
+    useEffect(() => { sceneRef.current = scene }, [scene])
+    // refs for scene-graph root and body map so we can update/create outside the init effect
+    const sceneGraphRootRef = useRef<THREE.Group | null>(null)
+    const bodyMapRef = useRef<Map<number, any>>(new Map())
     const mount = useRef<HTMLDivElement | null>(null)
     const rafRef = useRef<number | null>(null)
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
@@ -77,6 +83,14 @@ export default function ThreeScene({ state, onFps }: any) {
         const joint2 = new THREE.Mesh(jointGeom, material2)
         scene.add(rod2)
         scene.add(joint2)
+
+        // scene graph built from backend `scene` messages
+        const sceneGraphRoot = new THREE.Group()
+        scene.add(sceneGraphRoot)
+        // map body_id -> { group, links: { index: mesh } }
+        const bodyMap = new Map<number, any>()
+        sceneGraphRootRef.current = sceneGraphRoot
+        bodyMapRef.current = bodyMap
 
         // helper: align a cylinder mesh between two 3D points
         const tmpV1 = new THREE.Vector3()
@@ -183,6 +197,48 @@ export default function ThreeScene({ state, onFps }: any) {
             }
         }
 
+        // apply incoming scene updates: create meshes for any new links
+        function applySceneUpdate(incoming: any) {
+            if (!incoming || !incoming.bodies) return
+            const root = sceneGraphRootRef.current
+            const bodyMapLocal = bodyMapRef.current
+            if (!root || !bodyMapLocal) return
+            for (const body of incoming.bodies) {
+                const bid = body.body_id
+                let entry = bodyMapLocal.get(bid)
+                if (!entry) {
+                    const g = new THREE.Group()
+                    g.name = `body-${bid}`
+                    root.add(g)
+                    entry = { group: g, links: new Map() }
+                    bodyMapLocal.set(bid, entry)
+                }
+                // ensure link meshes exist
+                for (const link of body.links || []) {
+                    const idx = link.link_index
+                    if (entry.links.has(idx)) continue
+                    // determine geometry from visual metadata when possible
+                    let mesh: THREE.Mesh
+                    const vis = link.visual
+                    if (vis && vis.dimensions && vis.dimensions.length >= 3) {
+                        const d = vis.dimensions
+                        const sx = Math.max(0.001, d[0] * 2)
+                        const sy = Math.max(0.001, d[1] * 2)
+                        const sz = Math.max(0.001, d[2] * 2)
+                        const geom = new THREE.BoxGeometry(sx, sy, sz)
+                        mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0x999999 }))
+                    } else {
+                        // fallback: small box
+                        const geom = new THREE.BoxGeometry(0.12, 0.12, 0.12)
+                        mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0x999999 }))
+                    }
+                    mesh.name = `body-${bid}-link-${idx}`
+                    entry.group.add(mesh)
+                    entry.links.set(idx, mesh)
+                }
+            }
+        }
+
         function animate() {
             frames++
             const now = performance.now()
@@ -196,6 +252,30 @@ export default function ThreeScene({ state, onFps }: any) {
             }
 
             updateFromState()
+            // apply any new scene meshes (call once per frame if needed)
+            if (sceneRef.current) applySceneUpdate(sceneRef.current)
+            // update scene graph transforms from latest scene message if present
+            const sc = sceneRef.current
+            if (sc && sc.bodies) {
+                const bodyMapLocal = bodyMapRef.current
+                for (const body of sc.bodies) {
+                    const bid = body.body_id
+                    const entry = bodyMapLocal.get(bid)
+                    if (!entry) continue
+                    for (const link of body.links || []) {
+                        const mesh = entry.links.get(link.link_index)
+                        if (!mesh) continue
+                        const wp = link.world_position
+                        const wo = link.world_orientation
+                        if (wp && wp.length === 3) {
+                            mesh.position.set(wp[0], wp[1], wp[2])
+                        }
+                        if (wo && wo.length === 4) {
+                            mesh.quaternion.set(wo[0], wo[1], wo[2], wo[3])
+                        }
+                    }
+                }
+            }
             controls.update()
             renderer.render(scene, camera)
             rafRef.current = requestAnimationFrame(animate)

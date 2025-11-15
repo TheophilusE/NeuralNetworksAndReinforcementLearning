@@ -12,6 +12,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('single')
   const [controller, setController] = useState<Controller>('pid')
   const [state, setState] = useState<any>(null)
+  const [scene, setScene] = useState<any>(null)
   const [fps, setFps] = useState<number | undefined>(undefined)
   const [nnFramework, setNnFramework] = useState<'numpy' | 'torch'>('numpy')
   const [currentPolicyName, setCurrentPolicyName] = useState<string | null>(null)
@@ -25,6 +26,7 @@ export default function App() {
       try {
         const msg = JSON.parse(e.data)
         if (msg.state) setState(msg.state)
+        if (msg.scene) setScene(msg.scene)
         if (msg.training_stats) setTrainingStats(msg.training_stats)
         if (msg.policy_loaded) {
           const p = msg.policy_loaded as string
@@ -77,7 +79,7 @@ export default function App() {
 
   return (
     <div className="app" style={{ position: 'relative', height: '100vh' }}>
-      <ThreeScene state={state} onFps={(v: number) => setFps(v)} />
+      <ThreeScene state={state} scene={scene} onFps={(v: number) => setFps(v)} />
       <UIOverlay
         mode={mode}
         controller={controller}

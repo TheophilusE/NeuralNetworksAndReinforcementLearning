@@ -223,11 +223,19 @@ async def run_sim(ws: WebSocket, sim, controller, start):
             torque = controller.get_torque(state, target=start.target)
             sim.step(torque)
             t += sim.dt
-            await ws.send_text(json.dumps({
+            msg = {
                 "t": t,
                 "state": sim.get_state(),
                 "controller": "nn" if isinstance(controller, NNController) else "pid",
-            }))
+            }
+            # include scene updates for pybullet engine if supported
+            try:
+                if getattr(start, 'engine', 'simple') == 'pybullet' and hasattr(sim, 'get_scene_tree'):
+                    msg['scene'] = sim.get_scene_tree()
+            except Exception:
+                # fall back to sending no scene on error
+                pass
+            await ws.send_text(json.dumps(msg))
             await asyncio.sleep(sim.dt)
     except Exception as e:
         await ws.send_text(json.dumps({"error": str(e)}))
