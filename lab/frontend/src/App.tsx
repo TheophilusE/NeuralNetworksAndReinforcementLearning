@@ -49,10 +49,10 @@ export default function App() {
         return
       }
 
-      const sendStart = () => {
+        const sendStart = () => {
         if (!sock || sock.readyState !== WebSocket.OPEN) return
         try {
-          const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'pybullet' }
+          const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'ode' }
           if (controller === 'nn') payload.nn_framework = nnFramework
           if (controller === 'pid') {
             payload.kp = pidParams.kp
@@ -121,8 +121,8 @@ export default function App() {
     // debounce 300ms
     restartTimerRef.current = window.setTimeout(() => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return
-      try {
-        const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'pybullet' }
+        try {
+        const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'ode' }
         if (controller === 'nn') payload.nn_framework = nnFramework
         if (controller === 'pid') {
           payload.kp = pidParams.kp
@@ -143,7 +143,7 @@ export default function App() {
   const start = () => {
     if (!ws) return
     ws.send(
-      JSON.stringify({ action: 'start', mode, controller, dt: 0.02, target: 0.0, engine: 'pybullet', nn_framework: nnFramework })
+      JSON.stringify({ action: 'start', mode, controller, dt: 0.02, target: 0.0, engine: 'ode', nn_framework: nnFramework })
     )
     setRunning(true)
   }

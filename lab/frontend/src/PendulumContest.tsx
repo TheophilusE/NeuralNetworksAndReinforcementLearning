@@ -141,7 +141,7 @@ export default function PendulumContest() {
     const payload: any = {
       action: 'start_contest',
       mode,
-      engine: 'pybullet',
+      engine: 'ode',
       controller_a: controllerA,
       controller_b: controllerB,
       target,

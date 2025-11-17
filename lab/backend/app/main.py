@@ -12,6 +12,9 @@ import asyncio
 import json
 from pathlib import Path
 import os
+import threading
+import time
+from .thread_worker import submit_task
 
 app = FastAPI(title="NN & RL Lab Backend")
 
@@ -66,11 +69,6 @@ async def websocket_endpoint(ws: WebSocket):
             if hasattr(sim_a, 'theta'):
                 sim_a.theta = 0.2
                 sim_b.theta = 0.2
-            else:
-                import pybullet as _p
-                if getattr(sim_a, 'n_joints', 0) > 0:
-                    _p.resetJointState(sim_a.body, 0, 0.2, targetVelocity=0, physicsClientId=sim_a.client)
-                    _p.resetJointState(sim_b.body, 0, 0.2, targetVelocity=0, physicsClientId=sim_b.client)
         except Exception:
             pass
 
@@ -105,9 +103,9 @@ async def websocket_endpoint(ws: WebSocket):
                         pass
                 start = StartMessage(**msg)
                 engine = msg.get("engine", "simple")
-                # initialize simulator (choose pybullet or simple)
-                if engine == "pybullet":
-                    sim = PyBulletCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False))
+                # initialize simulator (choose ode or simple)
+                if engine == "ode":
+                    sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False))
                 else:
                     sim = PendulumSimulator(mode=start.mode, dt=start.dt)
 
@@ -135,12 +133,80 @@ async def websocket_endpoint(ws: WebSocket):
                         except Exception as e:
                             await ws.send_text(json.dumps({"policy_load_error": str(e)}))
 
-                # run simulation loop in background
-                asyncio.create_task(run_sim(ws, sim, controller, start))
-                # send an initial scene description to the client so the frontend can
-                # replicate the pybullet scene tree (bodies, links, visuals)
+                # run simulation loop in a pooled worker thread so the asyncio
+                # loop is not blocked; the thread will push telemetry into an
+                # asyncio.Queue via the event loop and a small drain task will
+                # forward messages to the websocket.
                 try:
-                    if engine == "pybullet" and hasattr(sim, 'get_scene_tree'):
+                    # stop any previous threaded sim for this client
+                    try:
+                        if _sim_stop_event is not None:
+                            _sim_stop_event.set()
+                    except Exception:
+                        pass
+
+                    _sim_send_queue = asyncio.Queue()
+                    _sim_stop_event = threading.Event()
+
+                    def _run_sim_thread(sim_obj, controller_obj, start_msg, loop, send_queue, stop_event):
+                        sim_obj.running = True
+                        t_local = 0.0
+                        try:
+                            while sim_obj.running and not stop_event.is_set():
+                                state = sim_obj.get_state()
+                                try:
+                                    torque = controller_obj.get_torque(state, target=start_msg.target)
+                                except Exception:
+                                    torque = 0.0
+                                try:
+                                    sim_obj.step(torque)
+                                except Exception:
+                                    pass
+                                t_local += getattr(sim_obj, 'dt', 0.02)
+                                msg = {
+                                    't': t_local,
+                                    'state': sim_obj.get_state(),
+                                    'controller': 'nn' if isinstance(controller_obj, NNController) else 'pid',
+                                }
+                                if hasattr(sim_obj, 'get_scene_tree'):
+                                    try:
+                                        msg['scene'] = sim_obj.get_scene_tree()
+                                    except Exception:
+                                        pass
+                                try:
+                                    loop.call_soon_threadsafe(send_queue.put_nowait, msg)
+                                except Exception:
+                                    break
+                                time.sleep(getattr(sim_obj, 'dt', 0.02))
+                        finally:
+                            try:
+                                if hasattr(sim_obj, 'close'):
+                                    sim_obj.close()
+                            except Exception:
+                                pass
+
+                    main_loop = asyncio.get_running_loop()
+                    _sim_thread_future = submit_task(_run_sim_thread, sim, controller, start, main_loop, _sim_send_queue, _sim_stop_event)
+
+                    async def _drain_queue_and_send(ws_obj, q: asyncio.Queue):
+                        try:
+                            while True:
+                                item = await q.get()
+                                try:
+                                    await ws_obj.send_text(json.dumps(item))
+                                except Exception:
+                                    break
+                        except asyncio.CancelledError:
+                            pass
+
+                    _sim_drain_task = asyncio.create_task(_drain_queue_and_send(ws, _sim_send_queue))
+                except Exception:
+                    # fallback to coroutine-based simulation loop
+                    asyncio.create_task(run_sim(ws, sim, controller, start))
+                # send an initial scene description to the client so the frontend can
+                # replicate the scene tree (bodies, links, visuals) if provided
+                try:
+                    if hasattr(sim, 'get_scene_tree'):
                         await ws.send_text(json.dumps({"scene": sim.get_scene_tree()}))
                 except Exception as e:
                     await ws.send_text(json.dumps({"scene_error": str(e)}))

@@ -102,7 +102,7 @@ export default function PendulumCompare() {
       tracesRef.current[m.label] = []
 
       // start sim on server for this method
-      const payload: any = { action: 'start', mode, controller: m.controller, dt: 0.02, target: 0.0, engine: 'pybullet' }
+      const payload: any = { action: 'start', mode, controller: m.controller, dt: 0.02, target: 0.0, engine: 'ode' }
       if (m.controller === 'nn') payload.nn_framework = m.nn_framework || 'numpy'
       ws.send(JSON.stringify(payload))
 

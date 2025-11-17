@@ -96,6 +96,16 @@ class ThreadWorker:
         self._executor.shutdown(wait=wait)
 
 
+# Module-level default worker for simple centralized task dispatching.
+# Callers can import `default_worker` and use `submit` to dispatch work.
+default_worker: ThreadWorker = ThreadWorker()
+
+
+def submit_task(fn: Callable[..., Any], *args, **kwargs) -> Future:
+    """Convenience helper to submit work to the module default worker."""
+    return default_worker.submit(fn, *args, **kwargs)
+
+
 def example_heavy(x: int) -> int:
     """Example CPU-bound or blocking task used in the module self-test."""
     time.sleep(0.1)

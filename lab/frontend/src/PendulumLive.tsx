@@ -6,7 +6,7 @@ type Props = {
   useDegrees?: boolean
 }
 
-export default function PendulumLive({ ws, target, useDegrees }: Props) {
+export function PendulumLive({ ws, target, useDegrees }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dataRef = useRef<number[]>([])
   const maxLen = 800
@@ -36,7 +36,7 @@ export default function PendulumLive({ ws, target, useDegrees }: Props) {
   useEffect(() => {
     if (!ws) return
     const buildAndSend = () => {
-      const payload = JSON.stringify({ action: 'start', mode: 'single', controller: 'pid', dt: 0.02, target: typeof target === 'number' ? target : 0.0, engine: 'pybullet' })
+      const payload = JSON.stringify({ action: 'start', mode: 'single', controller: 'pid', dt: 0.02, target: typeof target === 'number' ? target : 0.0, engine: 'ode' })
       try {
         if (ws.readyState === WebSocket.OPEN) ws.send(payload)
       } catch (e) {
@@ -159,3 +159,5 @@ export default function PendulumLive({ ws, target, useDegrees }: Props) {
     </div>
   )
 }
+
+export default PendulumLive
