@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from .simulation import PendulumSimulator
-from .pybullet_env import PyBulletCartPole
+from .ode_env import OdeCartPole
 from .models import StartMessage
 from .controllers import PIDController, NNController, TorchNNPolicy
 import numpy as np
@@ -43,9 +43,11 @@ async def websocket_endpoint(ws: WebSocket):
         # Auto-start two sims/controllers in parallel: PID (a) and NN (b).
         # Prefer PyBullet when available.
         try:
-            sim_a = PyBulletCartPole(mode="single", dt=0.02, gui=False)
-            sim_b = PyBulletCartPole(mode="single", dt=0.02, gui=False)
-            engine = "pybullet"
+            # Use the ODE-based solver instead of PyBullet. The ODE solver is
+            # headless; the frontend is the primary visualizer.
+            sim_a = OdeCartPole(mode="single", dt=0.02)
+            sim_b = OdeCartPole(mode="single", dt=0.02)
+            engine = "ode"
         except Exception:
             # fallback to simple simulator if pybullet unavailable
             sim_a = PendulumSimulator(mode="single", dt=0.02)
