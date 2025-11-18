@@ -28,6 +28,8 @@ type Props = {
   trainingStats?: any
   trainerParams?: { population?: number; sigma?: number; alpha?: number; steps?: number }
   onTrainerParamsChange?: (p: { population?: number; sigma?: number; alpha?: number; steps?: number }) => void
+  gravity?: number | null
+  onSetGravity?: (g: number) => void
 }
 
 export default function UIOverlay({
@@ -54,10 +56,14 @@ export default function UIOverlay({
   trainingStats,
   trainerParams,
   onTrainerParamsChange,
+  gravity,
+  onSetGravity,
 }: Props) {
   const [policyName, setPolicyName] = useState('default')
   const [trackLengthLocal, setTrackLengthLocal] = useState<string>('2.0')
   const [confirmedTrackLocal, setConfirmedTrackLocal] = useState<number | null>(null)
+  const [gravityLocal, setGravityLocal] = useState<string>(String(9.81))
+  const [confirmedGravityLocal, setConfirmedGravityLocal] = useState<number | null>(null)
   const [localTrainerParams, setLocalTrainerParams] = useState<{ population?: number; sigma?: number; alpha?: number; steps?: number }>(
     () => ({ population: 12, sigma: 0.08, alpha: 0.04, steps: 100 })
   )
@@ -68,6 +74,12 @@ export default function UIOverlay({
       setTrackLengthLocal(String(currentTrack))
     }
   }, [currentTrack])
+  useEffect(() => {
+    if (typeof gravity === 'number') {
+      setConfirmedGravityLocal(gravity)
+      setGravityLocal(String(gravity))
+    }
+  }, [gravity])
   useEffect(() => {
     if (trainerParams) setLocalTrainerParams(trainerParams)
   }, [trainerParams])
@@ -160,6 +172,30 @@ export default function UIOverlay({
                 if (onSetTrack) onSetTrack(v)
                 // optimistic local confirmation until server reply arrives
                 setConfirmedTrackLocal(v)
+              }}
+            >
+              Set
+            </button>
+          </div>
+        </label>
+        <label style={labelStyle}>
+          Gravity
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="input focus-ring"
+              type="number"
+              value={gravityLocal}
+              step={'0.01'}
+              onChange={(e) => setGravityLocal(e.target.value)}
+              style={{ width: 120 }}
+            />
+            <button
+              className="btn"
+              onClick={() => {
+                const v = parseFloat(gravityLocal)
+                if (!Number.isFinite(v)) return
+                if (onSetGravity) onSetGravity(v)
+                setConfirmedGravityLocal(v)
               }}
             >
               Set

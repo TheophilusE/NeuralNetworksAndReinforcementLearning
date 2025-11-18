@@ -22,6 +22,8 @@ export default function App() {
   const [pidParams, setPidParams] = useState({ kp: 30.0, ki: 0.0, kd: 2.0 })
   const [trainingStats, setTrainingStats] = useState<any>(null)
   const [confirmedTrack, setConfirmedTrack] = useState<number | null>(null)
+  const [gravity, setGravity] = useState<number>(9.81)
+  const [confirmedGravity, setConfirmedGravity] = useState<number | null>(null)
   const [trainerParams, setTrainerParams] = useState<{ population?: number; sigma?: number; alpha?: number; steps?: number }>({ population: 12, sigma: 0.08, alpha: 0.04, steps: 100 })
 
   useEffect(() => {
@@ -55,6 +57,7 @@ export default function App() {
         if (!sock || sock.readyState !== WebSocket.OPEN) return
         try {
           const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'ode' }
+          if (typeof gravity === 'number') payload.gravity = gravity
           if (controller === 'nn') payload.nn_framework = nnFramework
           if (controller === 'pid') {
             payload.kp = pidParams.kp
@@ -82,6 +85,7 @@ export default function App() {
           if (typeof msg.track_set !== 'undefined') setConfirmedTrack(Number(msg.track_set))
           if (msg.training_stats) setTrainingStats(msg.training_stats)
           if (msg.trainer_params) setTrainerParams(msg.trainer_params)
+          if (typeof msg.gravity_set !== 'undefined') setConfirmedGravity(Number(msg.gravity_set))
           if (msg.policy_loaded) {
             const p = msg.policy_loaded as string
             const name = p.split('/').pop() || p
@@ -145,11 +149,12 @@ export default function App() {
     }
   }, [mode, controller, nnFramework, target, ws])
 
+
   const start = () => {
     if (!ws) return
-    ws.send(
-      JSON.stringify({ action: 'start', mode, controller, dt: 0.02, target: 0.0, engine: 'ode', nn_framework: nnFramework })
-    )
+    const payload: any = { action: 'start', mode, controller, dt: 0.02, target: 0.0, engine: 'ode', nn_framework: nnFramework }
+    if (typeof gravity === 'number') payload.gravity = gravity
+    ws.send(JSON.stringify(payload))
     setRunning(true)
   }
 
@@ -159,6 +164,15 @@ export default function App() {
       ws.send(JSON.stringify({ action: 'set_track', track_length: len }))
     } catch (e) {
       console.warn('failed to send set_track', e)
+    }
+  }
+
+  const sendSetGravity = (g: number) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ action: 'set_gravity', gravity: g }))
+    } catch (e) {
+      console.warn('failed to send set_gravity', e)
     }
   }
 
@@ -221,6 +235,11 @@ export default function App() {
         trainingStats={trainingStats}
         trainerParams={trainerParams}
         onTrainerParamsChange={(p) => sendTrainerParams(p)}
+        gravity={confirmedGravity ?? gravity}
+        onSetGravity={(g) => {
+          setGravity(g)
+          sendSetGravity(g)
+        }}
       />
       {/* Training Stats card removed */}
       <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 100000 }}>
