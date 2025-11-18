@@ -174,6 +174,15 @@ async def websocket_endpoint(ws: WebSocket):
                 await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(sim_a, 'track_length', None), "session_id": session_id, "client_id": client_id}))
         except Exception:
             pass
+        # Close temporary sims used only for initial scene snapshot so they
+        # don't linger and produce unexpected background activity.
+        try:
+            if hasattr(sim_a, 'close'):
+                sim_a.close()
+            if hasattr(sim_b, 'close'):
+                sim_b.close()
+        except Exception:
+            pass
         # NOTE: do not auto-start a trainer here — trainer will be started
         # when the client explicitly requests NN controller via the `start`
         # action. Starting a trainer on connect and again on `start` caused
@@ -307,12 +316,28 @@ async def websocket_endpoint(ws: WebSocket):
                 try:
                     # stop any previous threaded sim for this client
                     try:
+                        # signal any existing sim thread to stop and attempt to
+                        # cancel the future so it doesn't continue running.
                         if _sim_stop_event is not None:
                             _sim_stop_event.set()
+                        if _sim_thread_future is not None:
+                            try:
+                                _sim_thread_future.cancel()
+                            except Exception:
+                                pass
                         # cancel any existing drain task so it doesn't keep
                         # sending from an old queue
                         if _sim_drain_task is not None and not _sim_drain_task.done():
-                            _sim_drain_task.cancel()
+                            try:
+                                _sim_drain_task.cancel()
+                            except Exception:
+                                pass
+                        # also set any previously running sim to not running
+                        try:
+                            if sim is not None:
+                                sim.running = False
+                        except Exception:
+                            pass
                     except Exception:
                         pass
 
@@ -384,6 +409,12 @@ async def websocket_endpoint(ws: WebSocket):
                         sim_session = session_id
                     except Exception:
                         sim_session = None
+                    # ensure any previous coroutine-run sim is signalled to stop
+                    try:
+                        if _sim_stop_event is not None:
+                            _sim_stop_event.set()
+                    except Exception:
+                        pass
                     asyncio.create_task(run_sim(ws, sim, controller, start, sim_session, client_id))
                 # send an initial scene description to the client so the frontend can
                 # replicate the scene tree (bodies, links, visuals) if provided
@@ -584,8 +615,21 @@ async def websocket_endpoint(ws: WebSocket):
                 await ws.send_text(json.dumps({"error": "unknown action"}))
 
     except WebSocketDisconnect:
-        if sim:
-            sim.running = False
+        try:
+            if sim:
+                sim.running = False
+        except Exception:
+            pass
+        try:
+            if _sim_stop_event is not None:
+                _sim_stop_event.set()
+        except Exception:
+            pass
+        try:
+            if _sim_drain_task is not None and not _sim_drain_task.done():
+                _sim_drain_task.cancel()
+        except Exception:
+            pass
 
 
 async def run_sim(ws: WebSocket, sim, controller, start, sim_session_id=None, client_id=None):
