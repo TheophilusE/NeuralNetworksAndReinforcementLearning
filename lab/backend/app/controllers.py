@@ -6,6 +6,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+# Module-level helper to map simulator angles into controller frame and
+# compute a wrapped angle difference (target treated as offset relative to upright==0).
+def controller_angle_error(sim_angle, target):
+    try:
+        current = float(sim_angle) - math.pi
+    except Exception:
+        current = float(sim_angle)
+    try:
+        targ = float(target)
+    except Exception:
+        targ = float(target or 0.0)
+    diff = targ - current
+    while diff > math.pi:
+        diff -= 2 * math.pi
+    while diff < -math.pi:
+        diff += 2 * math.pi
+    return diff
+
+
 class PIDController:
     def __init__(self, kp=30.0, ki=0.0, kd=2.0, max_output: float = 50.0):
         # sensible defaults chosen to provide stable baseline behavior
@@ -35,23 +54,7 @@ class PIDController:
             self.kd = float(kd)
 
     def angle_error(self, sim_angle, target):
-        # Map simulator angle (where upright==pi) into controller frame
-        # where upright==0 by subtracting pi from the sim angle. The
-        # `target` is treated as an offset relative to upright (upright==0).
-        try:
-            current = float(sim_angle) - math.pi
-        except Exception:
-            current = float(sim_angle)
-        try:
-            targ = float(target)
-        except Exception:
-            targ = float(target or 0.0)
-        diff = targ - current
-        while diff > math.pi:
-            diff -= 2 * math.pi
-        while diff < -math.pi:
-            diff += 2 * math.pi
-        return diff
+        return controller_angle_error(sim_angle, target)
 
     def get_torque(self, state, target=0.0, dt: float = 0.02):
         # Accept an optional dt so the PID integrator/derivative are scaled correctly.
@@ -136,14 +139,19 @@ class NNController:
     """A small numpy MLP policy with helper methods for parameter access.
 
     This network is intentionally simple and trained using an evolution-strategy
-    trainer (no backprop engine required). The controller maps a single scalar
-    (angle error) to a scalar torque.
+    trainer (no backprop engine required). The controller maps a small vector
+    of observations (angle error and angular rate) to a scalar torque.
     """
 
-    def __init__(self, hidden_sizes: Tuple[int, ...] = (16, 16)):
-        self.sizes = [1] + list(hidden_sizes) + [1]
-        self.weights: List[np.ndarray] = [np.random.randn(a, b) * 0.1 for a, b in zip(self.sizes[1:], self.sizes[:-1])]
+    def __init__(self, hidden_sizes: Tuple[int, ...] = (16, 16), input_dim: int = 4, max_output: float = 50.0):
+        # input_dim=4 -> [angle_error, angular_rate, x, x_dot]
+        self.input_dim = int(input_dim)
+        self.sizes = [self.input_dim] + list(hidden_sizes) + [1]
+        # smaller random init to avoid large random torques at start
+        self.weights: List[np.ndarray] = [np.random.randn(a, b) * 0.02 for a, b in zip(self.sizes[1:], self.sizes[:-1])]
         self.biases: List[np.ndarray] = [np.zeros((a,)) for a in self.sizes[1:]]
+        # limit NN output magnitude to match PID's realistic range
+        self.max_output = float(max_output)
 
     def reset(self):
         """No ephemeral state for NN controller; present for API symmetry."""
@@ -158,15 +166,36 @@ class NNController:
         return float(out)
 
     def get_torque(self, state, target=0.0, dt: float = 0.02) -> float:
-        # Use controller frame where upright==0. If simulator reports upright at pi,
-        # convert inside angle_error by mapping angles before computing error.
+        # Build a small observation vector: [angle_error, angular_rate]
         if "theta" in state:
             sim_angle = state["theta"]
-            err = np.array([self.angle_error(sim_angle, target)])
+            ang_rate = state.get("theta_dot", 0.0)
+            x = state.get('x', 0.0)
+            x_dot = state.get('x_dot', 0.0)
         else:
             sim_angle = state.get("th1", 0.0)
-            err = np.array([self.angle_error(sim_angle, target)])
-        return self._forward(err)
+            ang_rate = state.get("w1", 0.0)
+            x = state.get('x', 0.0)
+            x_dot = state.get('x_dot', 0.0)
+        try:
+            ang_rate = float(ang_rate)
+        except Exception:
+            ang_rate = 0.0
+        err = controller_angle_error(sim_angle, target)
+        obs = np.array([float(err), -float(ang_rate), float(x), float(x_dot)])
+        # If network expects a different input dimension, pad/truncate
+        if obs.size < self.input_dim:
+            obs = np.pad(obs, (0, self.input_dim - obs.size), 'constant')
+        elif obs.size > self.input_dim:
+            obs = obs[: self.input_dim]
+        raw = self._forward(obs)
+        # deadband: treat tiny outputs as zero to avoid slow drift
+        if abs(raw) < 1e-4:
+            raw = 0.0
+        # clamp output to configured maximum
+        if abs(raw) > self.max_output:
+            return float(self.max_output if raw > 0 else -self.max_output)
+        return float(raw)
 
     # Parameter helpers for evolutionary updates
     def get_flat_params(self) -> np.ndarray:
@@ -207,31 +236,69 @@ class NNController:
 class TorchNNPolicy:
     """PyTorch MLP policy wrapper. Exposes numpy-compatible param access for trainer."""
 
-    def __init__(self, hidden_sizes: Tuple[int, ...] = (32, 32), device: str = 'cpu'):
+    def __init__(self, hidden_sizes: Tuple[int, ...] = (32, 32), input_dim: int = 4, device: str = 'cpu'):
         self.device = torch.device(device)
         layers = []
-        in_dim = 1
+        in_dim = int(input_dim)
         for h in hidden_sizes:
             layers.append(nn.Linear(in_dim, h))
             layers.append(nn.Tanh())
             in_dim = h
         layers.append(nn.Linear(in_dim, 1))
         self.model = nn.Sequential(*layers).to(self.device)
+        # clamp network output magnitude similar to PID controller
+        self.max_output = 50.0
+        # initialize linear layers with small weights and zero biases to avoid
+        # large random torques at start
+        for m in self.model:
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0.0, std=0.02)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def reset(self):
         """No ephemeral state for Torch policy; API symmetry with PID."""
         return
 
     def get_torque(self, state, target=0.0, dt: float = 0.02) -> float:
-        # Use controller frame where upright==0. Convert sim angle via angle_error.
+        # Build observation [angle_error, angular_rate] for Torch policy
         if "theta" in state:
-            err = float(self.angle_error(state["theta"], target))
+            sim_angle = state["theta"]
+            ang_rate = state.get("theta_dot", 0.0)
         else:
-            err = float(self.angle_error(state.get("th1", 0.0), target))
-        x = torch.tensor([[err]], dtype=torch.float32, device=self.device)
+            sim_angle = state.get("th1", 0.0)
+            ang_rate = state.get("w1", 0.0)
+        try:
+            ang_rate = float(ang_rate)
+        except Exception:
+            ang_rate = 0.0
+        err = float(controller_angle_error(sim_angle, target))
+        obs = torch.tensor([[err, -ang_rate, float(state.get('x', 0.0)), float(state.get('x_dot', 0.0))]], dtype=torch.float32, device=self.device)
+        # adapt obs shape if model was constructed with different input dim
+        # by slicing or padding on CPU
+        first_linear = None
+        for m in self.model:
+            if isinstance(m, nn.Linear):
+                first_linear = m
+                break
+        if first_linear is not None and obs.shape[1] != first_linear.in_features:
+            cpu_obs = obs.detach().cpu().numpy()[0]
+            expected = first_linear.in_features
+            arr = cpu_obs
+            if arr.size < expected:
+                arr = np.pad(arr, (0, expected - arr.size), 'constant')
+            elif arr.size > expected:
+                arr = arr[:expected]
+            obs = torch.tensor([arr], dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            out = self.model(x)
-        return float(out.item())
+            out = self.model(obs)
+        raw = float(out.item())
+        # deadband to ignore tiny outputs
+        if abs(raw) < 1e-4:
+            raw = 0.0
+        if abs(raw) > getattr(self, 'max_output', float('inf')):
+            return float(self.max_output if raw > 0 else -self.max_output)
+        return raw
 
     def get_flat_params(self) -> np.ndarray:
         parts = []

@@ -217,13 +217,15 @@ async def websocket_endpoint(ws: WebSocket):
                 hidden = tuple(controller_obj.sizes[1:-1])
             else:
                 hidden = (32, 32)
+            # determine input dim for policy reconstruction (NNController/TorchNNPolicy)
+            input_dim = getattr(controller_obj, 'input_dim', 1)
 
             # evaluator reads trainer_params['steps'] so updates can take effect live
             def evaluator(flat: np.ndarray) -> float:
                 return es_worker.evaluate_params(
                     flat,
                     policy_kind,
-                    {'hidden_sizes': hidden},
+                    {'hidden_sizes': hidden, 'input_dim': input_dim},
                     {'engine': engine, 'mode': start_msg_local.mode, 'dt': start_msg_local.dt, 'track_length': getattr(sim_obj, 'track_length', 2.0)},
                     steps=trainer_params.get('steps', 100),
                 )
@@ -443,6 +445,7 @@ async def websocket_endpoint(ws: WebSocket):
                                     'client_id': client_id_local,
                                     'angle_controller': float(ctrl_ang),
                                     'target_controller': float(ctrl_target),
+                                    'tau': float(torque),
                                 }
                                 if hasattr(sim_obj, 'get_scene_tree'):
                                     try:
@@ -787,6 +790,7 @@ async def run_sim(ws: WebSocket, sim, controller, start, sim_session_id=None, cl
                 "client_id": client_id,
                 "angle_controller": float(ctrl_ang),
                 "target_controller": float(ctrl_target),
+                "tau": float(torque),
             }
             # include scene updates whenever the simulator exposes a scene tree
             if hasattr(sim, 'get_scene_tree'):
