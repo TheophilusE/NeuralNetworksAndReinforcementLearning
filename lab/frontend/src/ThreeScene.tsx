@@ -15,6 +15,9 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
     const bodyMapRef = useRef<Map<number, any>>(new Map())
     const dirRef = useRef<THREE.DirectionalLight | null>(null)
     const gridRef = useRef<THREE.GridHelper | null>(null)
+    const labelDomRef = useRef<HTMLDivElement | null>(null)
+    const trackVisualRef = useRef<any>(null)
+    const prevTrackRef = useRef<number | null>(null)
     const [cameraMode, setCameraMode] = useState<'orbit' | 'top' | 'side' | 'front' | 'follow'>('orbit')
     const [shadowsEnabled, setShadowsEnabled] = useState<boolean>(true)
     const [wireframeEnabled, setWireframeEnabled] = useState<boolean>(false)
@@ -198,42 +201,7 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
         trackGroup.add(capA)
         trackGroup.add(capB)
 
-        // label sprite showing length (transparent background, high-DPI canvas for crisp text)
-        const makeLabelSprite = (text: string) => {
-            const DPR = Math.max(1, window.devicePixelRatio || 1)
-            const cssW = 256
-            const cssH = 64
-            const canvas = document.createElement('canvas')
-            canvas.width = Math.floor(cssW * DPR)
-            canvas.height = Math.floor(cssH * DPR)
-            canvas.style.width = cssW + 'px'
-            canvas.style.height = cssH + 'px'
-            const ctx = canvas.getContext('2d')!
-            // scale so drawing commands use CSS pixel coordinates
-            ctx.scale(DPR, DPR)
-            ctx.clearRect(0, 0, cssW, cssH)
-            // transparent background (no fill)
-            ctx.font = '28px sans-serif'
-            ctx.textBaseline = 'middle'
-            ctx.fillStyle = 'white'
-            ctx.textAlign = 'center'
-            // add a slight stroke for readability on varied backgrounds
-            ctx.lineWidth = 3
-            ctx.strokeStyle = 'rgba(0,0,0,0.6)'
-            ctx.strokeText(text, cssW / 2, cssH / 2)
-            ctx.fillText(text, cssW / 2, cssH / 2)
-            const tex = new THREE.CanvasTexture(canvas)
-            tex.minFilter = THREE.LinearFilter
-            tex.magFilter = THREE.LinearFilter
-            tex.needsUpdate = true
-            const sprMat = new THREE.SpriteMaterial({ map: tex, depthTest: true, depthWrite: false, transparent: true })
-            const spr = new THREE.Sprite(sprMat)
-            spr.scale.set(0.6, 0.15, 1)
-            spr.position.set(0, 0, 0.08)
-            return { spr, tex }
-        }
-        const label = makeLabelSprite('')
-        trackGroup.add(label.spr)
+        // no 3D canvas sprite; we'll use an HTML overlay for crisp text
 
         // initialize to sensible default so the track is visible at startup
         const initialLength = (typeof currentTrack === 'number' && Number.isFinite(currentTrack) && currentTrack > 0) ? currentTrack : 2.0
@@ -252,34 +220,29 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
         posArr.array[5] = 0.02
         posArr.needsUpdate = true
         ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
-        // update label text
-        if (label && label.spr) {
-            const txt = `${initialLength.toFixed(2)} m`
-            const canvas = (label.tex.image as HTMLCanvasElement | null)
-            try {
-                if (canvas) {
-                    const DPR = Math.max(1, window.devicePixelRatio || 1)
-                    const cssW = 256
-                    const cssH = 64
-                    const ctx = canvas.getContext('2d')!
-                    ctx.scale(1, 1)
-                    ctx.clearRect(0, 0, cssW * DPR, cssH * DPR)
-                    ctx.scale(DPR, DPR)
-                    ctx.font = '28px sans-serif'
-                    ctx.textBaseline = 'middle'
-                    ctx.fillStyle = 'white'
-                    ctx.textAlign = 'center'
-                    ctx.lineWidth = 3
-                    ctx.strokeStyle = 'rgba(0,0,0,0.6)'
-                    ctx.strokeText(txt, cssW / 2, cssH / 2)
-                    ctx.fillText(txt, cssW / 2, cssH / 2)
-                    label.tex.needsUpdate = true
-                }
-            } catch { }
-        }
         trackGroup.visible = true
         scene3.add(trackGroup)
-        const trackVisualRef: any = { current: { group: trackGroup, bar: barMesh, line, caps: [capA, capB], label } }
+        trackVisualRef.current = { group: trackGroup, bar: barMesh, line, caps: [capA, capB] }
+
+        // create an HTML label overlay for crisp text; position will be updated each frame
+        try {
+            const labelDiv = document.createElement('div')
+            labelDiv.className = 'track-label'
+            labelDiv.style.position = 'absolute'
+            labelDiv.style.pointerEvents = 'none'
+            labelDiv.style.padding = '4px 8px'
+            labelDiv.style.background = 'transparent'
+            labelDiv.style.color = 'white'
+            labelDiv.style.fontFamily = 'monospace, sans-serif'
+            labelDiv.style.fontSize = '14px'
+            labelDiv.style.textShadow = '0 2px 4px rgba(0,0,0,0.7)'
+            labelDiv.style.transform = 'translate(-50%, -120%)'
+            labelDiv.style.whiteSpace = 'nowrap'
+            labelDiv.style.zIndex = '1000'
+            labelDiv.textContent = `${initialLength.toFixed(2)} m`
+            el.appendChild(labelDiv)
+            labelDomRef.current = labelDiv
+        } catch (e) { }
 
         // (no debug helpers)
 
@@ -379,6 +342,20 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
 
             controlsRef.current?.update()
             renderer.render(scene3, camera)
+            // update HTML label position each frame so it faces the camera
+            try {
+                const labelEl = labelDomRef.current
+                if (labelEl && cameraRef.current && mount.current) {
+                    const width = mount.current.clientWidth
+                    const height = mount.current.clientHeight
+                    const worldPos = new THREE.Vector3(0, 0, 0.08)
+                    worldPos.project(cameraRef.current)
+                    const x = (worldPos.x + 1) / 2 * width
+                    const y = (-worldPos.y + 1) / 2 * height
+                    labelEl.style.left = `${x}px`
+                    labelEl.style.top = `${y}px`
+                }
+            } catch (e) { }
             rafRef.current = requestAnimationFrame(animate)
         }
 
@@ -414,7 +391,13 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
                     t.line.geometry.dispose()
                     ; (t.line.material as any).dispose()
                     for (const c of t.caps) { c.geometry.dispose(); (c.material as any).dispose() }
-                    if (t.label && t.label.tex) t.label.tex.dispose()
+                }
+            } catch { }
+            // remove html label
+            try {
+                if (labelDomRef.current && el) {
+                    try { el.removeChild(labelDomRef.current) } catch { }
+                    labelDomRef.current = null
                 }
             } catch { }
         }
@@ -433,7 +416,7 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
             const bar = parts.children.find((c: any) => c.geometry && c.geometry.type === 'BoxGeometry') as THREE.Mesh | undefined
             const line = parts.children.find((c: any) => c.type === 'Line') as THREE.Line | undefined
             const caps = parts.children.filter((c: any) => c.geometry && c.geometry.type === 'SphereGeometry') as THREE.Mesh[]
-            const labelSpr = parts.children.find((c: any) => c.type === 'Sprite') as THREE.Sprite | undefined
+            // no 3D sprite label present
             if (typeof currentTrack === 'number' && Number.isFinite(currentTrack) && currentTrack > 0) {
                 // bar base width is 1: scale X to desired length
                 if (bar) bar.scale.set(currentTrack, 1, 1)
@@ -452,27 +435,39 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
                     ; (line.geometry as any).computeBoundingSphere && (line.geometry as any).computeBoundingSphere()
                     ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
                 }
-                // update label texture
-                if (labelSpr) {
-                    const txt = `${currentTrack.toFixed(2)} m`
-                    // recreate canvas texture
-                    const canvas = document.createElement('canvas')
-                    canvas.width = 256
-                    canvas.height = 64
-                    const ctx = canvas.getContext('2d')!
-                    ctx.clearRect(0, 0, canvas.width, canvas.height)
-                    ctx.fillStyle = 'rgba(32,32,32,0.9)'
-                    ctx.fillRect(0, 0, canvas.width, canvas.height)
-                    ctx.font = '28px sans-serif'
-                    ctx.fillStyle = 'white'
-                    ctx.textAlign = 'center'
-                    ctx.fillText(txt, canvas.width / 2, canvas.height / 2 + 10)
-                    const tex = new THREE.CanvasTexture(canvas)
-                    ; (labelSpr.material as any).map && ((labelSpr.material as any).map.dispose())
-                    ; (labelSpr.material as any).map = tex
-                    ; (labelSpr.material as any).map.needsUpdate = true
-                    labelSpr.position.set(0, 0, 0.08)
-                }
+                // update HTML label text and animate pulse
+                try {
+                    const labelEl = labelDomRef.current
+                    if (labelEl) {
+                        labelEl.textContent = `${currentTrack.toFixed(2)} m`
+                        labelEl.style.transition = 'transform 260ms cubic-bezier(.2,.8,.2,1), opacity 260ms'
+                        labelEl.style.transform = 'translate(-50%, -120%) scale(1.25)'
+                        labelEl.style.opacity = '1'
+                        setTimeout(() => { try { labelEl.style.transform = 'translate(-50%, -120%) scale(1)' } catch { } }, 260)
+                    }
+                } catch (e) { }
+
+                // animate 3D bar pulse along Y/Z to give feedback
+                try {
+                    const tvis = trackVisualRef.current
+                    if (tvis && tvis.bar) {
+                        const bar = tvis.bar as THREE.Mesh
+                        const baseY = (bar.scale.y && bar.scale.y > 0) ? bar.scale.y : 1
+                        const pulseMax = 1.5
+                        const dur = 300
+                        const start = performance.now()
+                        const step = (now: number) => {
+                            const p = Math.min(1, (now - start) / dur)
+                            const pulse = 1 + Math.sin(p * Math.PI) * (pulseMax - 1)
+                            bar.scale.y = pulse
+                            bar.scale.z = pulse
+                            if (p < 1) requestAnimationFrame(step)
+                            else { bar.scale.y = baseY; bar.scale.z = baseY }
+                        }
+                        requestAnimationFrame(step)
+                    }
+                } catch (e) { }
+
                 trackGroup.visible = true
             } else {
                 trackGroup.visible = false
