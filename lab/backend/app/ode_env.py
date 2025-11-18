@@ -14,6 +14,8 @@ class OdeCartPole:
         self.dt = float(dt)
         self.track_length = float(track_length)
         self.gui = False
+        # restitution for cart hitting track ends (0=no bounce, 1=perfect elastic)
+        self.restitution = 0.4
         # physical parameters
         self.M = 1.0  # cart mass
         self.m = 0.1  # pendulum mass
@@ -80,18 +82,19 @@ class OdeCartPole:
         if self.mode == "single":
             if self.state[0] < -half:
                 self.state[0] = -half
-                self.state[1] = 0.0
+                # bounce with restitution
+                self.state[1] = -self.restitution * self.state[1]
             elif self.state[0] > half:
                 self.state[0] = half
-                self.state[1] = 0.0
+                self.state[1] = -self.restitution * self.state[1]
         else:
             # state[0] is x for double as well
             if self.state[0] < -half:
                 self.state[0] = -half
-                self.state[1] = 0.0
+                self.state[1] = -self.restitution * self.state[1]
             elif self.state[0] > half:
                 self.state[0] = half
-                self.state[1] = 0.0
+                self.state[1] = -self.restitution * self.state[1]
 
     def get_state(self):
         if self.mode == "single":
@@ -107,19 +110,78 @@ class OdeCartPole:
             st = self.get_state()
             x = st["x"]
             th = st["theta"]
-            # base position (cart) and end of pendulum
-            cart_pos = [x, 0.0, 0.1]
-            pend_tip = [x + self.l * math.sin(th), 0.0, 0.1 - self.l * math.cos(th)]
-            return {"bodies": [{"body_id": 0, "base_position": cart_pos, "base_orientation": [0,0,0,1], "links": [{"link_index": -1, "world_position": cart_pos, "world_orientation": [0,0,0,1]}, {"link_index": 1, "world_position": pend_tip, "world_orientation": [0,0,0,1]}]}]}
+            # base position (cart) and end of pendulum. Provide visual metadata
+            pivot_z = 0.12
+            cart_pos = [x, 0.0, pivot_z]
+            pend_tip = [x + self.l * math.sin(th), 0.0, pivot_z - self.l * math.cos(th)]
+            # compute rod midpoint and orientation quaternion (cylinder default axis = Y)
+            pivot = np.array(cart_pos)
+            tip = np.array(pend_tip)
+            mid = ((pivot + tip) / 2.0).tolist()
+            vec = tip - pivot
+            vec_norm = np.linalg.norm(vec)
+            if vec_norm > 1e-6:
+                v = vec / vec_norm
+            else:
+                v = np.array([0.0, -1.0, 0.0])
+
+            # compute quaternion rotating Y-axis (0,1,0) to v
+            def quat_from_vectors(u, v):
+                # u, v: numpy arrays
+                cross = np.cross(u, v)
+                s = np.linalg.norm(cross)
+                c = float(np.dot(u, v))
+                if s < 1e-8:
+                    # parallel or opposite
+                    if c > 0:
+                        return [0.0, 0.0, 0.0, 1.0]
+                    else:
+                        # 180deg around X axis
+                        return [1.0, 0.0, 0.0, 0.0]
+                axis = cross / s
+                angle = math.atan2(s, c)
+                half = angle / 2.0
+                sin_h = math.sin(half)
+                return [float(axis[0] * sin_h), float(axis[1] * sin_h), float(axis[2] * sin_h), float(math.cos(half))]
+
+            quat = quat_from_vectors(np.array([0.0, 1.0, 0.0]), v)
+
+            body = {
+                "body_id": 0,
+                "base_position": cart_pos,
+                "base_orientation": [0, 0, 0, 1],
+                "links": [
+                    {
+                        "link_index": -1,
+                        "world_position": cart_pos,
+                        "world_orientation": [0, 0, 0, 1],
+                        "visual": {"geom_type": "box", "dimensions": [0.25, 0.12, 0.06], "rgba": [60, 120, 255, 255]}
+                    },
+                    {
+                        "link_index": 1,
+                        "world_position": mid,
+                        "world_orientation": quat,
+                        "visual": {"geom_type": "cylinder", "dimensions": [0.03, float(vec_norm)], "rgba": [255, 204, 51, 255]}
+                    }
+                ]
+            }
+            return {"bodies": [body]}
         else:
             st = self.get_state()
             x = st["x"]
             th1 = st["th1"]
             th2 = st["th2"]
-            cart_pos = [x, 0.0, 0.1]
-            tip1 = [x + self.l * math.sin(th1), 0.0, 0.1 - self.l * math.cos(th1)]
+            pivot_z = 0.12
+            cart_pos = [x, 0.0, pivot_z]
+            tip1 = [x + self.l * math.sin(th1), 0.0, pivot_z - self.l * math.cos(th1)]
             tip2 = [tip1[0] + self.l * math.sin(th2), 0.0, tip1[2] - self.l * math.cos(th2)]
-            return {"bodies": [{"body_id": 0, "base_position": cart_pos, "base_orientation": [0,0,0,1], "links": [{"link_index": -1, "world_position": cart_pos, "world_orientation": [0,0,0,1]}, {"link_index": 1, "world_position": tip1, "world_orientation": [0,0,0,1]}, {"link_index": 2, "world_position": tip2, "world_orientation": [0,0,0,1]}]}]}
+            # For simplicity, expose base and two link tips; visuals can be improved similarly to single
+            body = {"body_id": 0, "base_position": cart_pos, "base_orientation": [0,0,0,1], "links": [
+                {"link_index": -1, "world_position": cart_pos, "world_orientation": [0,0,0,1], "visual": {"geom_type": "box", "dimensions": [0.25, 0.12, 0.06], "rgba": [60,120,255,255]}},
+                {"link_index": 1, "world_position": tip1, "world_orientation": [0,0,0,1], "visual": {"geom_type": "cylinder", "dimensions": [0.03, float(self.l)], "rgba": [255,204,51,255]}},
+                {"link_index": 2, "world_position": tip2, "world_orientation": [0,0,0,1], "visual": {"geom_type": "cylinder", "dimensions": [0.03, float(self.l)], "rgba": [255,204,51,255]} }
+            ]}
+            return {"bodies": [body]}
 
     def close(self):
         # no-op for ODE solver
