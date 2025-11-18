@@ -188,6 +188,24 @@ class PyBulletCartPole:
         if self.gui:
             import time
             time.sleep(self.dt)
+        # Enforce track limits for prismatic joint (cart position)
+        try:
+            half = self.track_length / 2.0
+            if getattr(self, 'n_joints', 0) > 0:
+                js0 = p.getJointState(self.body, 0, physicsClientId=self.client)
+                pos = js0[0]
+                if pos < -half or pos > half:
+                    clamped = max(min(pos, half), -half)
+                    try:
+                        p.resetJointState(self.body, 0, clamped, targetVelocity=0.0, physicsClientId=self.client)
+                    except Exception:
+                        # Some pybullet versions use different reset signatures
+                        try:
+                            p.resetJointState(self.body, 0, clamped, physicsClientId=self.client)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
     def close(self):
         try:

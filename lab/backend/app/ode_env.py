@@ -75,6 +75,23 @@ class OdeCartPole:
             k3 = f(s + 0.5 * dt * k2)
             k4 = f(s + dt * k3)
             self.state = s + (dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
+        # enforce track limits on cart x (centered at 0)
+        half = self.track_length / 2.0
+        if self.mode == "single":
+            if self.state[0] < -half:
+                self.state[0] = -half
+                self.state[1] = 0.0
+            elif self.state[0] > half:
+                self.state[0] = half
+                self.state[1] = 0.0
+        else:
+            # state[0] is x for double as well
+            if self.state[0] < -half:
+                self.state[0] = -half
+                self.state[1] = 0.0
+            elif self.state[0] > half:
+                self.state[0] = half
+                self.state[1] = 0.0
 
     def get_state(self):
         if self.mode == "single":

@@ -10,9 +10,10 @@ class PendulumSimulator:
     scalar horizontal force applied to the cart.
     """
 
-    def __init__(self, mode: str = "single", dt: float = 0.02):
+    def __init__(self, mode: str = "single", dt: float = 0.02, track_length: float = 2.0):
         self.mode = mode
         self.dt = float(dt)
+        self.track_length = float(track_length)
         self.running = False
         # cart state
         self.x = 0.0
@@ -71,6 +72,14 @@ class PendulumSimulator:
             # integrate
             self.x_dot += xdd * self.dt
             self.x += self.x_dot * self.dt
+            # enforce track limits (clamp to half-length centered at 0)
+            half = self.track_length / 2.0
+            if self.x < -half:
+                self.x = -half
+                self.x_dot = 0.0
+            elif self.x > half:
+                self.x = half
+                self.x_dot = 0.0
             self.theta_dot += thdd * self.dt
             self.theta += self.theta_dot * self.dt
         else:
@@ -101,6 +110,14 @@ class PendulumSimulator:
             # integrate
             self.x_dot += xdd * self.dt
             self.x += self.x_dot * self.dt
+            # enforce track limits
+            half = self.track_length / 2.0
+            if self.x < -half:
+                self.x = -half
+                self.x_dot = 0.0
+            elif self.x > half:
+                self.x = half
+                self.x_dot = 0.0
             self.theta1_dot += th1dd * self.dt
             self.theta1 += self.theta1_dot * self.dt
             self.theta2_dot += th2dd * self.dt
