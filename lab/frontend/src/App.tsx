@@ -184,7 +184,7 @@ export default function App() {
 
   return (
     <div className="app" style={{ position: 'relative', height: '100vh' }}>
-      <ThreeScene state={state} scene={scene} onFps={(v: number) => setFps(v)} />
+      <ThreeScene state={state} scene={scene} onFps={(v: number) => setFps(v)} currentTrack={confirmedTrack} />
       <UIOverlay
         mode={mode}
         controller={controller}

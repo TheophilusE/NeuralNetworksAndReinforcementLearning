@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
-export default function ThreeScene({ state, scene, onFps }: any) {
+export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
     const mount = useRef<HTMLDivElement | null>(null)
     const rafRef = useRef<number | null>(null)
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
@@ -164,6 +164,17 @@ export default function ThreeScene({ state, scene, onFps }: any) {
         scene3.add(grid)
         gridRef.current = grid
 
+            // Track visualization: a thin box along the X axis centered at X=0
+            const trackMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.2, roughness: 0.6 })
+            const trackGeom = new THREE.BoxGeometry(1, 0.02, 0.02)
+            const trackMesh = new THREE.Mesh(trackGeom, trackMat)
+            trackMesh.position.set(0, 0, 0.01)
+            trackMesh.receiveShadow = false
+            trackMesh.castShadow = false
+            trackMesh.visible = false
+            scene3.add(trackMesh)
+            const trackMeshRef = { current: trackMesh }
+
         // (no debug helpers)
 
         const root = new THREE.Group()
@@ -288,8 +299,28 @@ export default function ThreeScene({ state, scene, onFps }: any) {
             window.removeEventListener('resize', resize)
             try { ro.disconnect() } catch { }
             if (el && renderer.domElement) el.removeChild(renderer.domElement)
+            // cleanup track mesh if present
+            try { if (trackMeshRef.current) { trackMeshRef.current.geometry.dispose(); (trackMeshRef.current.material as any).dispose() } } catch { }
         }
     }, [])
+
+    // Update track visualization when parent provides a track length
+    useEffect(() => {
+        // find track mesh inside the scene root (created in setup)
+        try {
+            const root = sceneGraphRootRef.current?.parent as THREE.Scene | undefined
+            if (!root) return
+            const track = root.children.find((c) => (c as any).geometry && (c as any).geometry.type === 'BoxGeometry') as THREE.Mesh | undefined
+            if (!track) return
+            if (typeof currentTrack === 'number' && Number.isFinite(currentTrack) && currentTrack > 0) {
+                // base geometry width is 1 — scale to desired length
+                track.scale.set(currentTrack, 1, 1)
+                track.visible = true
+            } else {
+                track.visible = false
+            }
+        } catch (e) { }
+    }, [currentTrack])
 
     // Apply camera presets when cameraMode changes
     function applyCameraMode(mode: 'orbit' | 'top' | 'side' | 'front' | 'follow') {
