@@ -10,7 +10,7 @@ class PendulumSimulator:
     scalar horizontal force applied to the cart.
     """
 
-    def __init__(self, mode: str = "single", dt: float = 0.02, track_length: float = 2.0):
+    def __init__(self, mode: str = "single", dt: float = 0.02, track_length: float = 2.0, gravity: float = 9.81):
         self.mode = mode
         self.dt = float(dt)
         self.track_length = float(track_length)
@@ -22,7 +22,7 @@ class PendulumSimulator:
         self.M = 1.0  # cart mass
         self.m = 0.1  # mass of pole 1
         self.l = 0.5  # half-length of pole
-        self.g = 9.81
+        self.g = float(gravity)
 
         if mode == "single":
             # theta, theta_dot for single pole

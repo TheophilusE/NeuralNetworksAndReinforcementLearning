@@ -177,15 +177,30 @@ async def websocket_endpoint(ws: WebSocket):
                 # initialize simulator (choose ode or simple); respect optional track_length
                 requested_track = getattr(start, 'track_length', None)
                 if engine == "ode":
+                    # allow overriding gravity via start message
+                    gravity = msg.get('gravity', None)
                     if requested_track is not None:
-                        sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False), track_length=requested_track)
+                        if gravity is not None:
+                            sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False), track_length=requested_track, gravity=gravity)
+                        else:
+                            sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False), track_length=requested_track)
                     else:
-                        sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False))
+                        if gravity is not None:
+                            sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False), gravity=gravity)
+                        else:
+                            sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False))
                 else:
+                    gravity = msg.get('gravity', None)
                     if requested_track is not None:
-                        sim = PendulumSimulator(mode=start.mode, dt=start.dt, track_length=requested_track)
+                        if gravity is not None:
+                            sim = PendulumSimulator(mode=start.mode, dt=start.dt, track_length=requested_track, gravity=gravity)
+                        else:
+                            sim = PendulumSimulator(mode=start.mode, dt=start.dt, track_length=requested_track)
                     else:
-                        sim = PendulumSimulator(mode=start.mode, dt=start.dt)
+                        if gravity is not None:
+                            sim = PendulumSimulator(mode=start.mode, dt=start.dt, gravity=gravity)
+                        else:
+                            sim = PendulumSimulator(mode=start.mode, dt=start.dt)
 
                 # stop any existing trainer; if the new controller is NN we'll start a fresh trainer below
                 if trainer:
@@ -431,6 +446,24 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_text(json.dumps({"trainer_params": trainer_params}))
                 except Exception as e:
                     await ws.send_text(json.dumps({"error": f"invalid trainer params: {e}"}))
+            elif action == "set_gravity":
+                # runtime update gravity for the active simulator
+                try:
+                    gravity_val = msg.get('gravity')
+                    if gravity_val is None:
+                        await ws.send_text(json.dumps({"error": "set_gravity requires 'gravity'"}))
+                        continue
+                    gravity_val = float(gravity_val)
+                    if sim is None:
+                        await ws.send_text(json.dumps({"error": "no active simulator to set gravity on"}))
+                        continue
+                    try:
+                        setattr(sim, 'g', float(gravity_val))
+                    except Exception:
+                        pass
+                    await ws.send_text(json.dumps({"gravity_set": float(gravity_val)}))
+                except Exception as e:
+                    await ws.send_text(json.dumps({"error": str(e)}))
             else:
                 await ws.send_text(json.dumps({"error": "unknown action"}))
 

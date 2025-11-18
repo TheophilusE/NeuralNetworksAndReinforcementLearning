@@ -9,7 +9,7 @@ class OdeCartPole:
     existing backend. The frontend is expected to be the primary visualizer.
     """
 
-    def __init__(self, mode="single", dt=0.02, gui=False, track_length=2.0):
+    def __init__(self, mode="single", dt=0.02, gui=False, track_length=2.0, gravity: float = 9.81):
         self.mode = mode
         self.dt = float(dt)
         self.track_length = float(track_length)
@@ -20,7 +20,7 @@ class OdeCartPole:
         self.M = 1.0  # cart mass
         self.m = 0.1  # pendulum mass
         self.l = 1.0  # pendulum length
-        self.g = 9.81
+        self.g = float(gravity)
         # state vector: for single: [x, x_dot, theta, theta_dot]
         # initialize near upright
         self.state = np.array([0.0, 0.0, 0.2, 0.0], dtype=float)
