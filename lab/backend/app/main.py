@@ -17,6 +17,79 @@ import time
 from .thread_worker import submit_task
 import uuid
 
+# Global registry of active simulations keyed by client_id. This ensures
+# only one active simulation (thread or coroutine) exists per client id.
+active_simulations: dict = {}
+active_simulations_lock = threading.Lock()
+
+
+def register_active_sim(client_id: str, entry: dict) -> None:
+    with active_simulations_lock:
+        # If an existing entry exists for this client, try to clean it up
+        prev = active_simulations.get(client_id)
+        if prev is not None:
+            try:
+                # best-effort cleanup
+                if prev.get('stop_event') is not None:
+                    prev['stop_event'].set()
+            except Exception:
+                pass
+        active_simulations[client_id] = entry
+
+
+def cleanup_active_sim(client_id: str) -> None:
+    with active_simulations_lock:
+        entry = active_simulations.get(client_id)
+        if not entry:
+            return
+        try:
+            if entry.get('stop_event') is not None:
+                try:
+                    entry['stop_event'].set()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            if entry.get('sim') is not None:
+                try:
+                    entry['sim'].running = False
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            if entry.get('thread_future') is not None:
+                try:
+                    entry['thread_future'].cancel()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            if entry.get('drain_task') is not None:
+                try:
+                    if not entry['drain_task'].done():
+                        entry['drain_task'].cancel()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            if entry.get('coroutine_task') is not None:
+                try:
+                    if not entry['coroutine_task'].done():
+                        entry['coroutine_task'].cancel()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            # remove registry entry
+            del active_simulations[client_id]
+        except Exception:
+            active_simulations.pop(client_id, None)
+
 app = FastAPI(title="NN & RL Lab Backend")
 
 app.add_middleware(
@@ -50,132 +123,78 @@ async def websocket_endpoint(ws: WebSocket):
     _sim_drain_task = None
     policies_dir = Path(__file__).resolve().parent.parent / "policies"
     policies_dir.mkdir(parents=True, exist_ok=True)
-    # Auto-start a simulator when a client connects so the frontend receives
-    # scene updates without requiring an explicit "start" message.
-    try:
-        # Create a single short-lived simulator to provide an initial
-        # scene snapshot for the frontend. Avoid creating multiple sims
-        # here (they previously leaked and produced duplicate visuals).
+    # Do not auto-start simulators on websocket connect. Simulators are
+    # created only in response to an explicit `start` action from the
+    # client. This prevents multiple sims leaking into the process and
+    # ensures one simulator per client connection.
+    engine = "simple"
+    # trainer_params is a mutable holder so the UI can update hyperparameters live.
+    trainer_params = {"population": 12, "sigma": 0.08, "alpha": 0.04, "steps": 100, "n_workers": 4}
+
+    def start_trainer_for(controller_obj, sim_obj, start_msg_local):
+        nonlocal trainer, stats_poller, trainer_params
         try:
-            try:
-                # prefer the ODE-based solver when available
-                temp_sim = OdeCartPole(mode="single", dt=0.02)
-                engine = "ode"
-            except Exception:
-                temp_sim = PendulumSimulator(mode="single", dt=0.02)
-                engine = "simple"
+            if controller_obj is None or not hasattr(controller_obj, 'get_flat_params'):
+                return
+            # avoid starting duplicate trainer
+            if trainer and trainer.running:
+                return
 
-            # try to reset to sensible defaults for snapshot
-            try:
-                if hasattr(temp_sim, 'reset'):
-                    temp_sim.reset()
-            except Exception:
-                pass
-        except Exception:
-            temp_sim = None
-            engine = "simple"
+            policy_kind = 'torch' if isinstance(controller_obj, TorchNNPolicy) else 'numpy'
+            if hasattr(controller_obj, 'sizes'):
+                hidden = tuple(controller_obj.sizes[1:-1])
+            else:
+                hidden = (32, 32)
 
-        # Helper to start an ESTrainer for a given controller if it looks NN-like
-        # trainer_params is a mutable holder so the UI can update hyperparameters live.
-        trainer_params = {"population": 12, "sigma": 0.08, "alpha": 0.04, "steps": 100, "n_workers": 4}
-
-        def start_trainer_for(controller_obj, sim_obj, start_msg_local):
-            nonlocal trainer, stats_poller, trainer_params
-            try:
-                if controller_obj is None or not hasattr(controller_obj, 'get_flat_params'):
-                    return
-                # avoid starting duplicate trainer
-                if trainer and trainer.running:
-                    return
-
-                policy_kind = 'torch' if isinstance(controller_obj, TorchNNPolicy) else 'numpy'
-                if hasattr(controller_obj, 'sizes'):
-                    hidden = tuple(controller_obj.sizes[1:-1])
-                else:
-                    hidden = (32, 32)
-
-                # evaluator reads trainer_params['steps'] so updates can take effect live
-                def evaluator(flat: np.ndarray) -> float:
-                    return es_worker.evaluate_params(
-                        flat,
-                        policy_kind,
-                        {'hidden_sizes': hidden},
-                        {'engine': engine, 'mode': start_msg_local.mode, 'dt': start_msg_local.dt, 'track_length': getattr(sim_obj, 'track_length', 2.0)},
-                        steps=trainer_params.get('steps', 100),
-                    )
-
-                def policy_setter(new_theta):
-                    if new_theta is None:
-                        return controller_obj.get_flat_params()
-                    else:
-                        controller_obj.set_flat_params(np.array(new_theta))
-
-                dim = controller_obj.num_params()
-                # Create trainer using values from trainer_params
-                trainer = ESTrainer(
-                    evaluator,
-                    policy_setter,
-                    dim=dim,
-                    population=trainer_params.get('population', 12),
-                    sigma=trainer_params.get('sigma', 0.08),
-                    alpha=trainer_params.get('alpha', 0.04),
-                    n_workers=trainer_params.get('n_workers', 4),
+            # evaluator reads trainer_params['steps'] so updates can take effect live
+            def evaluator(flat: np.ndarray) -> float:
+                return es_worker.evaluate_params(
+                    flat,
+                    policy_kind,
+                    {'hidden_sizes': hidden},
+                    {'engine': engine, 'mode': start_msg_local.mode, 'dt': start_msg_local.dt, 'track_length': getattr(sim_obj, 'track_length', 2.0)},
+                    steps=trainer_params.get('steps', 100),
                 )
-                trainer.start()
 
-                async def poll_stats():
-                    try:
-                        while trainer and trainer.running:
-                            await asyncio.sleep(0.5)
-                            try:
-                                stats = dict(trainer.stats)
-                                stats['running'] = bool(trainer.running)
-                                await ws.send_text(json.dumps({"training_stats": stats, "client_id": client_id}))
-                            except Exception:
-                                break
-                    except asyncio.CancelledError:
-                        pass
+            def policy_setter(new_theta):
+                if new_theta is None:
+                    return controller_obj.get_flat_params()
+                else:
+                    controller_obj.set_flat_params(np.array(new_theta))
 
-                stats_poller = asyncio.create_task(poll_stats())
-            except Exception:
-                pass
+            dim = controller_obj.num_params()
+            # Create trainer using values from trainer_params
+            trainer = ESTrainer(
+                evaluator,
+                policy_setter,
+                dim=dim,
+                population=trainer_params.get('population', 12),
+                sigma=trainer_params.get('sigma', 0.08),
+                alpha=trainer_params.get('alpha', 0.04),
+                n_workers=trainer_params.get('n_workers', 4),
+            )
+            trainer.start()
 
-        # Best-effort: align initial state for snapshot
-        try:
-            if temp_sim is not None and hasattr(temp_sim, 'theta'):
-                temp_sim.theta = 0.2
+            async def poll_stats():
+                try:
+                    while trainer and trainer.running:
+                        await asyncio.sleep(0.5)
+                        try:
+                            stats = dict(trainer.stats)
+                            stats['running'] = bool(trainer.running)
+                            await ws.send_text(json.dumps({"training_stats": stats, "client_id": client_id}))
+                        except Exception:
+                            break
+                except asyncio.CancelledError:
+                    pass
+
+            stats_poller = asyncio.create_task(poll_stats())
         except Exception:
             pass
 
-        # Send initial scene from temp_sim so the frontend can render a starting scene.
-        if temp_sim is not None:
-            start_msg = StartMessage(action="start", mode=temp_sim.mode, controller="pid", dt=temp_sim.dt, target=0.0)
-        else:
-            start_msg = StartMessage(action="start", mode="single", controller="pid", dt=0.02, target=0.0)
-        # per-connection reset counter to tag scene resets and session id for scene messages
-        reset_counter = 0
-        session_id = 0
-        try:
-            if temp_sim is not None and hasattr(temp_sim, 'get_scene_tree'):
-                scene_tree = temp_sim.get_scene_tree()
-                await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(temp_sim, 'track_length', None), "session_id": session_id, "client_id": client_id}))
-        except Exception:
-            pass
-        # Close temporary simulator used only for initial scene snapshot so it
-        # doesn't linger and produce unexpected background activity.
-        try:
-            if temp_sim is not None and hasattr(temp_sim, 'close'):
-                temp_sim.close()
-        except Exception:
-            pass
-        # NOTE: do not auto-start a trainer here — trainer will be started
-        # when the client explicitly requests NN controller via the `start`
-        # action. Starting a trainer on connect and again on `start` caused
-        # duplicate trainers and duplicate training_stats streams.
-    except Exception:
-        # If auto-start fails, continue and allow explicit start messages
-        sim = None
-        controller = None
+    # per-connection reset counter to tag scene resets and session id for scene messages
+    reset_counter = 0
+    session_id = 0
     try:
         while True:
             msg_text = await ws.receive_text()
@@ -299,30 +318,9 @@ async def websocket_endpoint(ws: WebSocket):
                 # asyncio.Queue via the event loop and a small drain task will
                 # forward messages to the websocket.
                 try:
-                    # stop any previous threaded sim for this client
+                    # Ensure any active sim for this client is cleaned up
                     try:
-                        # signal any existing sim thread to stop and attempt to
-                        # cancel the future so it doesn't continue running.
-                        if _sim_stop_event is not None:
-                            _sim_stop_event.set()
-                        if _sim_thread_future is not None:
-                            try:
-                                _sim_thread_future.cancel()
-                            except Exception:
-                                pass
-                        # cancel any existing drain task so it doesn't keep
-                        # sending from an old queue
-                        if _sim_drain_task is not None and not _sim_drain_task.done():
-                            try:
-                                _sim_drain_task.cancel()
-                            except Exception:
-                                pass
-                        # also set any previously running sim to not running
-                        try:
-                            if sim is not None:
-                                sim.running = False
-                        except Exception:
-                            pass
+                        cleanup_active_sim(client_id)
                     except Exception:
                         pass
 
@@ -375,6 +373,19 @@ async def websocket_endpoint(ws: WebSocket):
                     sim_session = session_id
                     _sim_thread_future = submit_task(_run_sim_thread, sim, controller, start, main_loop, _sim_send_queue, _sim_stop_event, sim_session, client_id)
 
+                    # Register this active sim for the client so future starts
+                    # will clean it up first.
+                    try:
+                        register_active_sim(client_id, {
+                            'sim': sim,
+                            'stop_event': _sim_stop_event,
+                            'thread_future': _sim_thread_future,
+                            'drain_task': None,  # set below after creating drain task
+                            'send_queue': _sim_send_queue,
+                        })
+                    except Exception:
+                        pass
+
                     async def _drain_queue_and_send(ws_obj, q: asyncio.Queue):
                         try:
                             while True:
@@ -387,6 +398,13 @@ async def websocket_endpoint(ws: WebSocket):
                             pass
 
                     _sim_drain_task = asyncio.create_task(_drain_queue_and_send(ws, _sim_send_queue))
+                    # store drain task in registry
+                    try:
+                        with active_simulations_lock:
+                            if client_id in active_simulations:
+                                active_simulations[client_id]['drain_task'] = _sim_drain_task
+                    except Exception:
+                        pass
                 except Exception:
                     # fallback to coroutine-based simulation loop; pass session
                     # id so scene messages from this coroutine are tagged.
@@ -400,7 +418,20 @@ async def websocket_endpoint(ws: WebSocket):
                             _sim_stop_event.set()
                     except Exception:
                         pass
-                    asyncio.create_task(run_sim(ws, sim, controller, start, sim_session, client_id))
+                    # register coroutine task for cleanup and tracking
+                    try:
+                        coroutine_task = asyncio.create_task(run_sim(ws, sim, controller, start, sim_session, client_id))
+                        register_active_sim(client_id, {
+                            'sim': sim,
+                            'stop_event': _sim_stop_event,
+                            'thread_future': None,
+                            'drain_task': None,
+                            'send_queue': None,
+                            'coroutine_task': coroutine_task,
+                        })
+                    except Exception:
+                        # fallback: create without registration
+                        asyncio.create_task(run_sim(ws, sim, controller, start, sim_session, client_id))
                 # send an initial scene description to the client so the frontend can
                 # replicate the scene tree (bodies, links, visuals) if provided
                 try:
@@ -414,13 +445,26 @@ async def websocket_endpoint(ws: WebSocket):
                 except Exception:
                     pass
             elif action == "stop":
+                try:
+                    cleanup_active_sim(client_id)
+                except Exception:
+                    pass
                 if sim:
-                    sim.running = False
+                    try:
+                        sim.running = False
+                    except Exception:
+                        pass
                 if trainer:
-                    trainer.stop()
+                    try:
+                        trainer.stop()
+                    except Exception:
+                        pass
                     trainer = None
                 if stats_poller:
-                    stats_poller.cancel()
+                    try:
+                        stats_poller.cancel()
+                    except Exception:
+                        pass
                     stats_poller = None
             elif action == "set_track":
                 # runtime update of the track length for the active simulator
@@ -601,18 +645,12 @@ async def websocket_endpoint(ws: WebSocket):
 
     except WebSocketDisconnect:
         try:
+            cleanup_active_sim(client_id)
+        except Exception:
+            pass
+        try:
             if sim:
                 sim.running = False
-        except Exception:
-            pass
-        try:
-            if _sim_stop_event is not None:
-                _sim_stop_event.set()
-        except Exception:
-            pass
-        try:
-            if _sim_drain_task is not None and not _sim_drain_task.done():
-                _sim_drain_task.cancel()
         except Exception:
             pass
 
