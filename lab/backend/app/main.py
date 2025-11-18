@@ -15,6 +15,7 @@ import os
 import threading
 import time
 from .thread_worker import submit_task
+import uuid
 
 app = FastAPI(title="NN & RL Lab Backend")
 
@@ -34,10 +35,19 @@ async def health():
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
+    # unique id for this websocket client connection so messages can be
+    # attributed to the correct client when multiple clients are connected
+    client_id = str(uuid.uuid4())
+
     sim = None
     controller = None
     trainer = None
     stats_poller = None
+    # per-connection thread/sim control handles to prevent duplicate sims
+    _sim_stop_event = None
+    _sim_thread_future = None
+    _sim_send_queue = None
+    _sim_drain_task = None
     policies_dir = Path(__file__).resolve().parent.parent / "policies"
     policies_dir.mkdir(parents=True, exist_ok=True)
     # Auto-start a simulator when a client connects so the frontend receives
@@ -135,7 +145,7 @@ async def websocket_endpoint(ws: WebSocket):
                             try:
                                 stats = dict(trainer.stats)
                                 stats['running'] = bool(trainer.running)
-                                await ws.send_text(json.dumps({"training_stats": stats}))
+                                await ws.send_text(json.dumps({"training_stats": stats, "client_id": client_id}))
                             except Exception:
                                 break
                     except asyncio.CancelledError:
@@ -155,10 +165,13 @@ async def websocket_endpoint(ws: WebSocket):
 
         # Send initial scene from sim_a so the frontend can render a starting scene.
         start_msg = StartMessage(action="start", mode=sim_a.mode, controller="pid", dt=sim_a.dt, target=0.0)
+        # per-connection reset counter to tag scene resets and session id for scene messages
+        reset_counter = 0
+        session_id = 0
         try:
             if hasattr(sim_a, 'get_scene_tree'):
                 scene_tree = sim_a.get_scene_tree()
-                await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(sim_a, 'track_length', None)}))
+                await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(sim_a, 'track_length', None), "session_id": session_id, "client_id": client_id}))
         except Exception:
             pass
         # NOTE: do not auto-start a trainer here — trainer will be started
@@ -216,10 +229,25 @@ async def websocket_endpoint(ws: WebSocket):
                         else:
                             sim = PendulumSimulator(mode=start.mode, dt=start.dt)
 
+                # increment session id for this new simulator instance so the
+                # frontend can ignore stale scene messages belonging to prior
+                # sessions. Do this before resetting so reset messages carry
+                # the new session id.
+                try:
+                    session_id += 1
+                except Exception:
+                    session_id = (session_id or 0) + 1
+
                 # ensure sim is reset to a clean start state
                 try:
                     if hasattr(sim, 'reset'):
                         sim.reset()
+                        # notify frontend to clear existing scene objects for a clean restart
+                        try:
+                            reset_counter += 1
+                            await ws.send_text(json.dumps({"scene_reset": True, "reset_id": reset_counter, "session_id": session_id}))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
 
@@ -281,13 +309,17 @@ async def websocket_endpoint(ws: WebSocket):
                     try:
                         if _sim_stop_event is not None:
                             _sim_stop_event.set()
+                        # cancel any existing drain task so it doesn't keep
+                        # sending from an old queue
+                        if _sim_drain_task is not None and not _sim_drain_task.done():
+                            _sim_drain_task.cancel()
                     except Exception:
                         pass
 
                     _sim_send_queue = asyncio.Queue()
                     _sim_stop_event = threading.Event()
 
-                    def _run_sim_thread(sim_obj, controller_obj, start_msg, loop, send_queue, stop_event):
+                    def _run_sim_thread(sim_obj, controller_obj, start_msg, loop, send_queue, stop_event, sim_session_id, client_id_local):
                         sim_obj.running = True
                         t_local = 0.0
                         try:
@@ -306,6 +338,8 @@ async def websocket_endpoint(ws: WebSocket):
                                     't': t_local,
                                     'state': sim_obj.get_state(),
                                     'controller': 'nn' if isinstance(controller_obj, NNController) else 'pid',
+                                    'session_id': sim_session_id,
+                                    'client_id': client_id_local,
                                 }
                                 if hasattr(sim_obj, 'get_scene_tree'):
                                     try:
@@ -324,8 +358,12 @@ async def websocket_endpoint(ws: WebSocket):
                             except Exception:
                                 pass
 
+                    # capture the session id for this sim thread so messages remain
+                    # tagged with the session they belong to even if session_id
+                    # increments later for a new sim instance.
                     main_loop = asyncio.get_running_loop()
-                    _sim_thread_future = submit_task(_run_sim_thread, sim, controller, start, main_loop, _sim_send_queue, _sim_stop_event)
+                    sim_session = session_id
+                    _sim_thread_future = submit_task(_run_sim_thread, sim, controller, start, main_loop, _sim_send_queue, _sim_stop_event, sim_session, client_id)
 
                     async def _drain_queue_and_send(ws_obj, q: asyncio.Queue):
                         try:
@@ -340,13 +378,18 @@ async def websocket_endpoint(ws: WebSocket):
 
                     _sim_drain_task = asyncio.create_task(_drain_queue_and_send(ws, _sim_send_queue))
                 except Exception:
-                    # fallback to coroutine-based simulation loop
-                    asyncio.create_task(run_sim(ws, sim, controller, start))
+                    # fallback to coroutine-based simulation loop; pass session
+                    # id so scene messages from this coroutine are tagged.
+                    try:
+                        sim_session = session_id
+                    except Exception:
+                        sim_session = None
+                    asyncio.create_task(run_sim(ws, sim, controller, start, sim_session, client_id))
                 # send an initial scene description to the client so the frontend can
                 # replicate the scene tree (bodies, links, visuals) if provided
                 try:
                     if hasattr(sim, 'get_scene_tree'):
-                        await ws.send_text(json.dumps({"scene": sim.get_scene_tree()}))
+                        await ws.send_text(json.dumps({"scene": sim.get_scene_tree(), "session_id": session_id, "client_id": client_id}))
                 except Exception as e:
                     await ws.send_text(json.dumps({"scene_error": str(e)}))
                 # If the chosen controller is NN-like, start trainer automatically
@@ -418,7 +461,17 @@ async def websocket_endpoint(ws: WebSocket):
                         # reset sim and controller after loading a policy to ensure clean start
                         try:
                             if sim is not None and hasattr(sim, 'reset'):
+                                # bump session id to mark a fresh scene session
+                                try:
+                                    session_id += 1
+                                except Exception:
+                                    session_id = (session_id or 0) + 1
                                 sim.reset()
+                                try:
+                                    reset_counter += 1
+                                    await ws.send_text(json.dumps({"scene_reset": True, "reset_id": reset_counter, "session_id": session_id, "client_id": client_id}))
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
                         try:
@@ -435,7 +488,17 @@ async def websocket_endpoint(ws: WebSocket):
                         controller.load(str(path))
                         try:
                             if sim is not None and hasattr(sim, 'reset'):
+                                # bump session id to mark a fresh scene session
+                                try:
+                                    session_id += 1
+                                except Exception:
+                                    session_id = (session_id or 0) + 1
                                 sim.reset()
+                                try:
+                                    reset_counter += 1
+                                    await ws.send_text(json.dumps({"scene_reset": True, "reset_id": reset_counter, "session_id": session_id, "client_id": client_id}))
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
                         try:
@@ -525,7 +588,7 @@ async def websocket_endpoint(ws: WebSocket):
             sim.running = False
 
 
-async def run_sim(ws: WebSocket, sim, controller, start):
+async def run_sim(ws: WebSocket, sim, controller, start, sim_session_id=None, client_id=None):
     sim.running = True
     t = 0.0
     try:
@@ -539,6 +602,8 @@ async def run_sim(ws: WebSocket, sim, controller, start):
                 "t": t,
                 "state": sim.get_state(),
                 "controller": "nn" if isinstance(controller, NNController) else "pid",
+                "session_id": sim_session_id,
+                "client_id": client_id,
             }
             # include scene updates whenever the simulator exposes a scene tree
             if hasattr(sim, 'get_scene_tree'):

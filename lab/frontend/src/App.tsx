@@ -16,6 +16,8 @@ export default function App() {
   const [useDegrees, setUseDegrees] = useState<boolean>(false)
   const [state, setState] = useState<any>(null)
   const [scene, setScene] = useState<any>(null)
+  const [sceneResetId, setSceneResetId] = useState<number | null>(null)
+  const [sceneSessionId, setSceneSessionId] = useState<number | null>(null)
   const [fps, setFps] = useState<number | undefined>(undefined)
   const [nnFramework, setNnFramework] = useState<'numpy' | 'torch'>('numpy')
   const [currentPolicyName, setCurrentPolicyName] = useState<string | null>(null)
@@ -81,7 +83,30 @@ export default function App() {
         try {
           const msg = JSON.parse(e.data)
           if (msg.state) setState(msg.state)
-          if (msg.scene) setScene(msg.scene)
+
+          // Scene messages are tagged with a `session_id`. Only apply
+          // scenes that belong to the current session; this prevents
+          // stale or interleaved scenes from different sim instances
+          // being rendered simultaneously.
+          if (msg.scene) {
+            const sid = typeof msg.session_id !== 'undefined' ? Number(msg.session_id) : null
+            if (sceneSessionId == null) {
+              if (sid != null) setSceneSessionId(sid)
+              setScene(msg.scene)
+            } else {
+              if (sid == null || sid === sceneSessionId) {
+                setScene(msg.scene)
+              } else {
+                // ignore stale scene
+              }
+            }
+          }
+
+          if (msg.scene_reset) {
+            setSceneResetId(msg.reset_id || Date.now())
+            if (typeof msg.session_id !== 'undefined') setSceneSessionId(Number(msg.session_id))
+          }
+
           if (typeof msg.track_set !== 'undefined') setConfirmedTrack(Number(msg.track_set))
           if (msg.training_stats) setTrainingStats(msg.training_stats)
           if (msg.trainer_params) setTrainerParams(msg.trainer_params)
@@ -209,7 +234,7 @@ export default function App() {
 
   return (
     <div className="app" style={{ position: 'relative', height: '100vh' }}>
-      <ThreeScene state={state} scene={scene} onFps={(v: number) => setFps(v)} currentTrack={confirmedTrack} />
+      <ThreeScene state={state} scene={scene} onFps={(v: number) => setFps(v)} currentTrack={confirmedTrack} sceneResetId={sceneResetId} />
       <UIOverlay
         mode={mode}
         controller={controller}

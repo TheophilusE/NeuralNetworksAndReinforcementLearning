@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 
-export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
+export default function ThreeScene({ state, scene, onFps, currentTrack, sceneResetId }: any) {
     const mount = useRef<HTMLDivElement | null>(null)
     const rafRef = useRef<number | null>(null)
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
@@ -36,6 +36,36 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
     }, [state])
 
     useEffect(() => { sceneRef.current = scene }, [scene])
+
+    // When backend signals a scene reset we must clear existing body groups
+    useEffect(() => {
+        if (sceneResetId == null) return
+        try {
+            const root = sceneGraphRootRef.current
+            const bodyMapLocal = bodyMapRef.current
+            if (root && bodyMapLocal) {
+                for (const entry of bodyMapLocal.values()) {
+                    try {
+                        // dispose meshes and materials
+                        const g = entry.group as THREE.Group
+                        g.traverse((obj: any) => {
+                            if (obj.isMesh) {
+                                try {
+                                    if (obj.geometry) obj.geometry.dispose()
+                                } catch (e) { }
+                                try {
+                                    if (obj.material) (obj.material as any).dispose()
+                                } catch (e) { }
+                            }
+                        })
+                        if (g.parent) g.parent.remove(g)
+                    } catch (e) { }
+                }
+            }
+        } catch (e) { }
+        // clear map so next scene is fresh
+        bodyMapRef.current = new Map()
+    }, [sceneResetId])
 
     // track incoming scene timestamp for server interval
 
