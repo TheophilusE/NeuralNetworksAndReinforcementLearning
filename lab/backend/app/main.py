@@ -286,11 +286,11 @@ async def websocket_endpoint(ws: WebSocket):
                             controller.set_params(kp=start.kp, ki=start.ki, kd=start.kd)
                     except Exception:
                         pass
-                try:
-                    if hasattr(controller, 'reset'):
-                        controller.reset()
-                except Exception:
-                    pass
+                    try:
+                        if hasattr(controller, 'reset'):
+                            controller.reset()
+                    except Exception:
+                        pass
                 else:
                     # allow choosing torch or numpy NN implementation
                     nn_framework = msg.get('nn_framework', 'numpy')
