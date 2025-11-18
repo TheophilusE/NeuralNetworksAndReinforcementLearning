@@ -32,6 +32,12 @@ export default function App() {
     let sock: WebSocket | null = null
     let reconnectTimer: number | null = null
 
+    // Use a module-scoped singleton socket so React StrictMode remounts
+    // don't create duplicate connections.
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    if ((window as any).__nnal_global_socket === undefined) (window as any).__nnal_global_socket = null
+
     const connect = async () => {
       if (!mounted) return
       // Do a quick health check before creating a WebSocket to avoid
@@ -46,7 +52,17 @@ export default function App() {
       }
 
       try {
-        sock = new WebSocket('ws://localhost:8000/ws')
+        // Reuse an existing global socket if one exists
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        const globalSock = (window as any).__nnal_global_socket as WebSocket | null
+        if (globalSock && globalSock.readyState !== WebSocket.CLOSED && globalSock.readyState !== WebSocket.CLOSING) {
+          sock = globalSock
+        } else {
+          sock = new WebSocket('ws://localhost:8000/ws')
+          // store globally so subsequent mounts reuse it
+          try { (window as any).__nnal_global_socket = sock } catch (e) { }
+        }
       } catch (e) {
         // Some environments may throw synchronously (rare); schedule reconnect
         console.warn('failed to construct WebSocket, will retry', e)
@@ -71,14 +87,14 @@ export default function App() {
         }
       }
 
-      sock.onopen = () => {
+      const onOpen = () => {
         console.log('ws open')
         setWs(sock)
         // send initial start so server resets env for this client
         sendStart()
       }
 
-      sock.onmessage = (e) => {
+      const onMessage = (e: MessageEvent) => {
         try {
           const msg = JSON.parse(e.data)
           if (msg.state) setState(msg.state)
@@ -125,7 +141,7 @@ export default function App() {
         }
       }
 
-      sock.onclose = () => {
+      const onClose = () => {
         console.log('ws closed')
         setWs(null)
         if (!mounted) return
@@ -133,8 +149,22 @@ export default function App() {
         reconnectTimer = window.setTimeout(() => connect(), 1000)
       }
 
-      sock.onerror = (ev) => {
+      const onError = (ev: Event) => {
         console.warn('ws error', ev)
+      }
+
+      try {
+        // attach listeners; when reusing global socket we add/remove listeners in cleanup
+        sock.addEventListener('open', onOpen)
+        sock.addEventListener('message', onMessage)
+        sock.addEventListener('close', onClose)
+        sock.addEventListener('error', onError)
+      } catch (e) {
+        // fallback to property setters if addEventListener not supported
+        try { sock.onopen = onOpen } catch {}
+        try { sock.onmessage = onMessage as any } catch {}
+        try { sock.onclose = onClose } catch {}
+        try { sock.onerror = onError as any } catch {}
       }
     }
 
@@ -142,7 +172,20 @@ export default function App() {
     return () => {
       mounted = false
       if (reconnectTimer) window.clearTimeout(reconnectTimer)
-      try { sock && sock.close() } catch { }
+      // do not forcibly close a globally-shared socket here; only remove listeners
+      try {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        const globalSock = (window as any).__nnal_global_socket as WebSocket | null
+        if (sock && globalSock === sock) {
+          try { sock.removeEventListener('open', () => {}) } catch {}
+          try { sock.removeEventListener('message', () => {}) } catch {}
+          try { sock.removeEventListener('close', () => {}) } catch {}
+          try { sock.removeEventListener('error', () => {}) } catch {}
+        }
+      } catch (e) {
+        // ignore
+      }
     }
   }, [])
   
