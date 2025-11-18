@@ -21,6 +21,7 @@ export default function App() {
   const [currentPolicyName, setCurrentPolicyName] = useState<string | null>(null)
   const [pidParams, setPidParams] = useState({ kp: 30.0, ki: 0.0, kd: 2.0 })
   const [trainingStats, setTrainingStats] = useState<any>(null)
+  const [confirmedTrack, setConfirmedTrack] = useState<number | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -77,6 +78,7 @@ export default function App() {
           const msg = JSON.parse(e.data)
           if (msg.state) setState(msg.state)
           if (msg.scene) setScene(msg.scene)
+          if (typeof msg.track_set !== 'undefined') setConfirmedTrack(Number(msg.track_set))
           if (msg.training_stats) setTrainingStats(msg.training_stats)
           if (msg.policy_loaded) {
             const p = msg.policy_loaded as string
@@ -148,6 +150,15 @@ export default function App() {
     setRunning(true)
   }
 
+  const sendSetTrack = (len: number) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ action: 'set_track', track_length: len }))
+    } catch (e) {
+      console.warn('failed to send set_track', e)
+    }
+  }
+
   const stop = () => {
     if (!ws) return
     ws.send(JSON.stringify({ action: 'stop' }))
@@ -195,6 +206,7 @@ export default function App() {
         nnFramework={nnFramework}
         onChangeNNFramework={(f) => setNnFramework(f)}
         currentPolicyName={currentPolicyName}
+        onSetTrack={sendSetTrack}
       />
       {/* Training Stats card removed */}
       <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 100000 }}>

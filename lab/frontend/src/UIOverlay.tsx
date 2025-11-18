@@ -24,6 +24,8 @@ type Props = {
   onChangeNNFramework: (f: 'numpy' | 'torch') => void
   currentPolicyName?: string | null
   fps?: number
+  onSetTrack?: (len: number) => void
+  currentTrack?: number | null
 }
 
 export default function UIOverlay({
@@ -47,8 +49,11 @@ export default function UIOverlay({
   nnFramework,
   onChangeNNFramework,
   currentPolicyName,
+  onSetTrack,
 }: Props) {
   const [policyName, setPolicyName] = useState('default')
+  const [trackLengthLocal, setTrackLengthLocal] = useState<string>('2.0')
+  const [confirmedTrackLocal, setConfirmedTrackLocal] = useState<number | null>(null)
   // support both controlled (via props) and uncontrolled (local) modes for the deg toggle
   const [localUseDegrees, setLocalUseDegrees] = useState(false)
   const effectiveUseDegrees = typeof useDegrees === 'boolean' ? useDegrees : localUseDegrees
@@ -124,6 +129,28 @@ export default function UIOverlay({
             Load Policy
           </button>
         </div>
+        <label style={labelStyle}>
+          Track Length
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="input focus-ring"
+              type="number"
+              value={trackLengthLocal}
+              step={'0.1'}
+              onChange={(e) => setTrackLengthLocal(e.target.value)}
+              style={{ width: 120 }}
+            />
+            <button
+              className="btn"
+              onClick={() => {
+                const v = parseFloat(trackLengthLocal)
+                if (Number.isFinite(v) && onSetTrack) onSetTrack(v)
+              }}
+            >
+              Set
+            </button>
+          </div>
+        </label>
       </div>
       {controller === 'nn' && (
         <div style={{ marginTop: 8 }}>
@@ -131,6 +158,7 @@ export default function UIOverlay({
             NN Framework:
             <StyledSelect value={nnFramework} onChange={(v) => onChangeNNFramework(v as any)} options={[{ value: 'numpy', label: 'Numpy' }, { value: 'torch', label: 'PyTorch' }]} />
           </label>
+        
           <div style={{ marginTop: 6 }}>
             <strong>Loaded:</strong> {currentPolicyName ? currentPolicyName : 'none'}
           </div>
@@ -156,6 +184,7 @@ export default function UIOverlay({
         <div className="glass stat-box">FPS: {fps ? fps.toFixed(1) : '-'}</div>
         <div className="glass stat-box">Mode: {mode}</div>
         <div className="glass stat-box">Controller: {controller}</div>
+        <div className="glass stat-box">Track: {typeof currentTrack === 'number' ? currentTrack.toFixed(2) : (confirmedTrackLocal !== null ? confirmedTrackLocal.toFixed(2) : '-')}</div>
       </div>
     </div>
   )

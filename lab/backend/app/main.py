@@ -103,11 +103,18 @@ async def websocket_endpoint(ws: WebSocket):
                         pass
                 start = StartMessage(**msg)
                 engine = msg.get("engine", "simple")
-                # initialize simulator (choose ode or simple)
+                # initialize simulator (choose ode or simple); respect optional track_length
+                requested_track = getattr(start, 'track_length', None)
                 if engine == "ode":
-                    sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False))
+                    if requested_track is not None:
+                        sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False), track_length=requested_track)
+                    else:
+                        sim = OdeCartPole(mode=start.mode, dt=start.dt, gui=msg.get("gui", False))
                 else:
-                    sim = PendulumSimulator(mode=start.mode, dt=start.dt)
+                    if requested_track is not None:
+                        sim = PendulumSimulator(mode=start.mode, dt=start.dt, track_length=requested_track)
+                    else:
+                        sim = PendulumSimulator(mode=start.mode, dt=start.dt)
 
                 if start.controller == "pid":
                     # create PID controller and apply any provided initial gains
@@ -219,6 +226,25 @@ async def websocket_endpoint(ws: WebSocket):
                 if stats_poller:
                     stats_poller.cancel()
                     stats_poller = None
+            elif action == "set_track":
+                # runtime update of the track length for the active simulator
+                try:
+                    track_val = msg.get('track_length')
+                    if track_val is None:
+                        await ws.send_text(json.dumps({"error": "set_track requires 'track_length'"}))
+                        continue
+                    track_val = float(track_val)
+                    if sim is None:
+                        await ws.send_text(json.dumps({"error": "no active simulator to set track on"}))
+                        continue
+                    # set attribute if available
+                    try:
+                        setattr(sim, 'track_length', float(track_val))
+                    except Exception:
+                        pass
+                    await ws.send_text(json.dumps({"track_set": float(track_val)}))
+                except Exception as e:
+                    await ws.send_text(json.dumps({"error": str(e)}))
             elif action == "control":
                 # update controller parameters at runtime
                 ctype = msg.get("type")
