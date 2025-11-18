@@ -164,16 +164,122 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
         scene3.add(grid)
         gridRef.current = grid
 
-            // Track visualization: a thin box along the X axis centered at X=0
-            const trackMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.2, roughness: 0.6 })
-            const trackGeom = new THREE.BoxGeometry(1, 0.02, 0.02)
-            const trackMesh = new THREE.Mesh(trackGeom, trackMat)
-            trackMesh.position.set(0, 0, 0.01)
-            trackMesh.receiveShadow = false
-            trackMesh.castShadow = false
-            trackMesh.visible = false
-            scene3.add(trackMesh)
-            const trackMeshRef = { current: trackMesh }
+        // Track visualization: group with bar, dashed line, end caps and label
+        const trackGroup = new THREE.Group()
+        trackGroup.name = 'track-group'
+        // base bar (thin box) - base width=1, scale X to change length
+        const barMat = new THREE.MeshStandardMaterial({ color: 0x2b7cff, metalness: 0.2, roughness: 0.4 })
+        const barGeom = new THREE.BoxGeometry(1, 0.02, 0.02)
+        const barMesh = new THREE.Mesh(barGeom, barMat)
+        barMesh.position.set(0, 0, 0.01)
+        barMesh.receiveShadow = false
+        barMesh.castShadow = false
+        trackGroup.add(barMesh)
+
+        // dashed center line
+        const lineMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.05, gapSize: 0.03, linewidth: 1 })
+        const lineGeom = new THREE.BufferGeometry()
+        const positions = new Float32Array([ -0.5, 0, 0.02, 0.5, 0, 0.02 ])
+        lineGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+        lineGeom.computeBoundingSphere()
+        const line = new THREE.Line(lineGeom, lineMat)
+        ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
+        trackGroup.add(line)
+
+        // spherical end caps
+        const capMat = new THREE.MeshStandardMaterial({ color: 0xffcc33, metalness: 0.3, roughness: 0.5 })
+        const capGeom = new THREE.SphereGeometry(0.03, 16, 12)
+        const capA = new THREE.Mesh(capGeom, capMat)
+        const capB = new THREE.Mesh(capGeom, capMat)
+        capA.position.set(-0.5, 0, 0.03)
+        capB.position.set(0.5, 0, 0.03)
+        capA.castShadow = false
+        capB.castShadow = false
+        trackGroup.add(capA)
+        trackGroup.add(capB)
+
+        // label sprite showing length (transparent background, high-DPI canvas for crisp text)
+        const makeLabelSprite = (text: string) => {
+            const DPR = Math.max(1, window.devicePixelRatio || 1)
+            const cssW = 256
+            const cssH = 64
+            const canvas = document.createElement('canvas')
+            canvas.width = Math.floor(cssW * DPR)
+            canvas.height = Math.floor(cssH * DPR)
+            canvas.style.width = cssW + 'px'
+            canvas.style.height = cssH + 'px'
+            const ctx = canvas.getContext('2d')!
+            // scale so drawing commands use CSS pixel coordinates
+            ctx.scale(DPR, DPR)
+            ctx.clearRect(0, 0, cssW, cssH)
+            // transparent background (no fill)
+            ctx.font = '28px sans-serif'
+            ctx.textBaseline = 'middle'
+            ctx.fillStyle = 'white'
+            ctx.textAlign = 'center'
+            // add a slight stroke for readability on varied backgrounds
+            ctx.lineWidth = 3
+            ctx.strokeStyle = 'rgba(0,0,0,0.6)'
+            ctx.strokeText(text, cssW / 2, cssH / 2)
+            ctx.fillText(text, cssW / 2, cssH / 2)
+            const tex = new THREE.CanvasTexture(canvas)
+            tex.minFilter = THREE.LinearFilter
+            tex.magFilter = THREE.LinearFilter
+            tex.needsUpdate = true
+            const sprMat = new THREE.SpriteMaterial({ map: tex, depthTest: true, depthWrite: false, transparent: true })
+            const spr = new THREE.Sprite(sprMat)
+            spr.scale.set(0.6, 0.15, 1)
+            spr.position.set(0, 0, 0.08)
+            return { spr, tex }
+        }
+        const label = makeLabelSprite('')
+        trackGroup.add(label.spr)
+
+        // initialize to sensible default so the track is visible at startup
+        const initialLength = (typeof currentTrack === 'number' && Number.isFinite(currentTrack) && currentTrack > 0) ? currentTrack : 2.0
+        // apply initial scale/positions
+        barMesh.scale.set(initialLength, 1, 1)
+        const halfInit = initialLength / 2
+        capA.position.set(-halfInit, 0, 0.03)
+        capB.position.set(halfInit, 0, 0.03)
+        // update line geometry positions to match
+        const posArr = (line.geometry as THREE.BufferGeometry).attributes.position as any
+        posArr.array[0] = -halfInit
+        posArr.array[1] = 0
+        posArr.array[2] = 0.02
+        posArr.array[3] = halfInit
+        posArr.array[4] = 0
+        posArr.array[5] = 0.02
+        posArr.needsUpdate = true
+        ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
+        // update label text
+        if (label && label.spr) {
+            const txt = `${initialLength.toFixed(2)} m`
+            const canvas = (label.tex.image as HTMLCanvasElement | null)
+            try {
+                if (canvas) {
+                    const DPR = Math.max(1, window.devicePixelRatio || 1)
+                    const cssW = 256
+                    const cssH = 64
+                    const ctx = canvas.getContext('2d')!
+                    ctx.scale(1, 1)
+                    ctx.clearRect(0, 0, cssW * DPR, cssH * DPR)
+                    ctx.scale(DPR, DPR)
+                    ctx.font = '28px sans-serif'
+                    ctx.textBaseline = 'middle'
+                    ctx.fillStyle = 'white'
+                    ctx.textAlign = 'center'
+                    ctx.lineWidth = 3
+                    ctx.strokeStyle = 'rgba(0,0,0,0.6)'
+                    ctx.strokeText(txt, cssW / 2, cssH / 2)
+                    ctx.fillText(txt, cssW / 2, cssH / 2)
+                    label.tex.needsUpdate = true
+                }
+            } catch { }
+        }
+        trackGroup.visible = true
+        scene3.add(trackGroup)
+        const trackVisualRef: any = { current: { group: trackGroup, bar: barMesh, line, caps: [capA, capB], label } }
 
         // (no debug helpers)
 
@@ -299,25 +405,77 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
             window.removeEventListener('resize', resize)
             try { ro.disconnect() } catch { }
             if (el && renderer.domElement) el.removeChild(renderer.domElement)
-            // cleanup track mesh if present
-            try { if (trackMeshRef.current) { trackMeshRef.current.geometry.dispose(); (trackMeshRef.current.material as any).dispose() } } catch { }
+            // cleanup track visuals
+            try {
+                if (trackVisualRef.current) {
+                    const t = trackVisualRef.current
+                    t.bar.geometry.dispose()
+                    ; (t.bar.material as any).dispose()
+                    t.line.geometry.dispose()
+                    ; (t.line.material as any).dispose()
+                    for (const c of t.caps) { c.geometry.dispose(); (c.material as any).dispose() }
+                    if (t.label && t.label.tex) t.label.tex.dispose()
+                }
+            } catch { }
         }
     }, [])
 
     // Update track visualization when parent provides a track length
     useEffect(() => {
-        // find track mesh inside the scene root (created in setup)
         try {
+            // access the visual we stored on setup (safe-guard if setup hasn't run yet)
             const root = sceneGraphRootRef.current?.parent as THREE.Scene | undefined
             if (!root) return
-            const track = root.children.find((c) => (c as any).geometry && (c as any).geometry.type === 'BoxGeometry') as THREE.Mesh | undefined
-            if (!track) return
+            const trackGroup = root.getObjectByName('track-group') as THREE.Group | undefined
+            if (!trackGroup) return
+            // extract parts
+            const parts: any = (trackGroup as any)
+            const bar = parts.children.find((c: any) => c.geometry && c.geometry.type === 'BoxGeometry') as THREE.Mesh | undefined
+            const line = parts.children.find((c: any) => c.type === 'Line') as THREE.Line | undefined
+            const caps = parts.children.filter((c: any) => c.geometry && c.geometry.type === 'SphereGeometry') as THREE.Mesh[]
+            const labelSpr = parts.children.find((c: any) => c.type === 'Sprite') as THREE.Sprite | undefined
             if (typeof currentTrack === 'number' && Number.isFinite(currentTrack) && currentTrack > 0) {
-                // base geometry width is 1 — scale to desired length
-                track.scale.set(currentTrack, 1, 1)
-                track.visible = true
+                // bar base width is 1: scale X to desired length
+                if (bar) bar.scale.set(currentTrack, 1, 1)
+                // position caps at +/- length/2
+                const half = currentTrack / 2
+                if (caps && caps.length >= 2) {
+                    caps[0].position.set(-half, 0, 0.03)
+                    caps[1].position.set(half, 0, 0.03)
+                }
+                // update dashed line geometry
+                if (line) {
+                    const pos = (line.geometry as THREE.BufferGeometry).attributes.position as any
+                    pos.array[0] = -half
+                    pos.array[3] = half
+                    pos.needsUpdate = true
+                    ; (line.geometry as any).computeBoundingSphere && (line.geometry as any).computeBoundingSphere()
+                    ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
+                }
+                // update label texture
+                if (labelSpr) {
+                    const txt = `${currentTrack.toFixed(2)} m`
+                    // recreate canvas texture
+                    const canvas = document.createElement('canvas')
+                    canvas.width = 256
+                    canvas.height = 64
+                    const ctx = canvas.getContext('2d')!
+                    ctx.clearRect(0, 0, canvas.width, canvas.height)
+                    ctx.fillStyle = 'rgba(32,32,32,0.9)'
+                    ctx.fillRect(0, 0, canvas.width, canvas.height)
+                    ctx.font = '28px sans-serif'
+                    ctx.fillStyle = 'white'
+                    ctx.textAlign = 'center'
+                    ctx.fillText(txt, canvas.width / 2, canvas.height / 2 + 10)
+                    const tex = new THREE.CanvasTexture(canvas)
+                    ; (labelSpr.material as any).map && ((labelSpr.material as any).map.dispose())
+                    ; (labelSpr.material as any).map = tex
+                    ; (labelSpr.material as any).map.needsUpdate = true
+                    labelSpr.position.set(0, 0, 0.08)
+                }
+                trackGroup.visible = true
             } else {
-                track.visible = false
+                trackGroup.visible = false
             }
         } catch (e) { }
     }, [currentTrack])
