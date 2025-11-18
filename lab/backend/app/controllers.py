@@ -16,6 +16,10 @@ class PIDController:
         self.max_output = float(max_output)
         self.integral = 0.0
         self.last_error = None
+        # Assume simulator reports upright at angle == pi (common convention).
+        # Controllers map simulator angles into a controller frame where upright==0
+        # by subtracting pi from the simulator angle. The `target` parameter is
+        # treated as an offset relative to upright (i.e. upright==0).
 
     def reset(self):
         """Reset controller internal state (integrator, derivative memory)."""
@@ -30,8 +34,19 @@ class PIDController:
         if kd is not None:
             self.kd = float(kd)
 
-    def angle_error(self, target, current):
-        diff = target - current
+    def angle_error(self, sim_angle, target):
+        # Map simulator angle (where upright==pi) into controller frame
+        # where upright==0 by subtracting pi from the sim angle. The
+        # `target` is treated as an offset relative to upright (upright==0).
+        try:
+            current = float(sim_angle) - math.pi
+        except Exception:
+            current = float(sim_angle)
+        try:
+            targ = float(target)
+        except Exception:
+            targ = float(target or 0.0)
+        diff = targ - current
         while diff > math.pi:
             diff -= 2 * math.pi
         while diff < -math.pi:
@@ -54,8 +69,9 @@ class PIDController:
                 pass
         # Prefer using measured angular velocity (theta_dot / w1) for derivative term
         if "theta" in state:
-            # compute error as current - target so positive angle -> positive control
-            err = self.angle_error(state["theta"], target)
+            # get sim angle and convert to controller frame inside angle_error
+            sim_angle = state["theta"]
+            err = self.angle_error(sim_angle, target)
             # compute prospective integral (anti-windup: only commit if not saturating)
             try:
                 prospective_integral = self.integral + err * float(dt)
@@ -87,7 +103,8 @@ class PIDController:
                 return -self.max_output
             return raw
         else:
-            err = self.angle_error(state.get("th1", 0.0), target)
+            sim_angle = state.get("th1", 0.0)
+            err = self.angle_error(sim_angle, target)
             try:
                 prospective_integral = self.integral + err * float(dt)
             except Exception:
@@ -141,11 +158,14 @@ class NNController:
         return float(out)
 
     def get_torque(self, state, target=0.0, dt: float = 0.02) -> float:
-        # Use current - target so positive pendulum angle -> positive action
+        # Use controller frame where upright==0. If simulator reports upright at pi,
+        # convert inside angle_error by mapping angles before computing error.
         if "theta" in state:
-            err = np.array([state["theta"] - target])
+            sim_angle = state["theta"]
+            err = np.array([self.angle_error(sim_angle, target)])
         else:
-            err = np.array([state.get("th1", 0.0) - target])
+            sim_angle = state.get("th1", 0.0)
+            err = np.array([self.angle_error(sim_angle, target)])
         return self._forward(err)
 
     # Parameter helpers for evolutionary updates
@@ -203,11 +223,11 @@ class TorchNNPolicy:
         return
 
     def get_torque(self, state, target=0.0, dt: float = 0.02) -> float:
-        # Use current - target so positive pendulum angle -> positive action
+        # Use controller frame where upright==0. Convert sim angle via angle_error.
         if "theta" in state:
-            err = state["theta"] - target
+            err = float(self.angle_error(state["theta"], target))
         else:
-            err = state.get("th1", 0.0) - target
+            err = float(self.angle_error(state.get("th1", 0.0), target))
         x = torch.tensor([[err]], dtype=torch.float32, device=self.device)
         with torch.no_grad():
             out = self.model(x)
