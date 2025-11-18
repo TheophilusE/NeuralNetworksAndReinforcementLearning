@@ -182,11 +182,11 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
         // dashed center line
         const lineMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.05, gapSize: 0.03, linewidth: 1 })
         const lineGeom = new THREE.BufferGeometry()
-        const positions = new Float32Array([ -0.5, 0, 0.02, 0.5, 0, 0.02 ])
+        const positions = new Float32Array([-0.5, 0, 0.02, 0.5, 0, 0.02])
         lineGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3))
         lineGeom.computeBoundingSphere()
         const line = new THREE.Line(lineGeom, lineMat)
-        ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
+            ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
         trackGroup.add(line)
 
         // spherical end caps
@@ -201,7 +201,7 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
         trackGroup.add(capA)
         trackGroup.add(capB)
 
-        // no 3D canvas sprite; we'll use an HTML overlay for crisp text
+        // HTML overlay used for crisp text
 
         // initialize to sensible default so the track is visible at startup
         const initialLength = (typeof currentTrack === 'number' && Number.isFinite(currentTrack) && currentTrack > 0) ? currentTrack : 2.0
@@ -219,7 +219,7 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
         posArr.array[4] = 0
         posArr.array[5] = 0.02
         posArr.needsUpdate = true
-        ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
+            ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
         trackGroup.visible = true
         scene3.add(trackGroup)
         trackVisualRef.current = { group: trackGroup, bar: barMesh, line, caps: [capA, capB] }
@@ -387,9 +387,9 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
                 if (trackVisualRef.current) {
                     const t = trackVisualRef.current
                     t.bar.geometry.dispose()
-                    ; (t.bar.material as any).dispose()
+                        ; (t.bar.material as any).dispose()
                     t.line.geometry.dispose()
-                    ; (t.line.material as any).dispose()
+                        ; (t.line.material as any).dispose()
                     for (const c of t.caps) { c.geometry.dispose(); (c.material as any).dispose() }
                 }
             } catch { }
@@ -416,7 +416,7 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
             const bar = parts.children.find((c: any) => c.geometry && c.geometry.type === 'BoxGeometry') as THREE.Mesh | undefined
             const line = parts.children.find((c: any) => c.type === 'Line') as THREE.Line | undefined
             const caps = parts.children.filter((c: any) => c.geometry && c.geometry.type === 'SphereGeometry') as THREE.Mesh[]
-            // no 3D sprite label present
+            // (no 3D sprite label present)
             if (typeof currentTrack === 'number' && Number.isFinite(currentTrack) && currentTrack > 0) {
                 // bar base width is 1: scale X to desired length
                 if (bar) bar.scale.set(currentTrack, 1, 1)
@@ -432,8 +432,8 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
                     pos.array[0] = -half
                     pos.array[3] = half
                     pos.needsUpdate = true
-                    ; (line.geometry as any).computeBoundingSphere && (line.geometry as any).computeBoundingSphere()
-                    ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
+                        ; (line.geometry as any).computeBoundingSphere && (line.geometry as any).computeBoundingSphere()
+                        ; (line.geometry as any).computeLineDistances && (line.geometry as any).computeLineDistances()
                 }
                 // update HTML label text and animate pulse
                 try {
