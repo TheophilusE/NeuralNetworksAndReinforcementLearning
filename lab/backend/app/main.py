@@ -213,7 +213,10 @@ async def websocket_endpoint(ws: WebSocket):
                 return
 
             policy_kind = 'torch' if isinstance(controller_obj, TorchNNPolicy) else 'numpy'
-            if hasattr(controller_obj, 'sizes'):
+            # Determine hidden layer sizes from the live controller when possible
+            if hasattr(controller_obj, 'hidden_sizes'):
+                hidden = tuple(controller_obj.hidden_sizes)
+            elif hasattr(controller_obj, 'sizes'):
                 hidden = tuple(controller_obj.sizes[1:-1])
             else:
                 hidden = (32, 32)
@@ -238,6 +241,17 @@ async def websocket_endpoint(ws: WebSocket):
 
             dim = controller_obj.num_params()
             # Create trainer using values from trainer_params
+            # Determine worker count. Multiprocessing.Pool cannot pickle
+            # nested/local evaluator closures, so force single-worker for
+            # numpy-based policies which use a nested evaluator here.
+            n_workers_arg = int(trainer_params.get('n_workers', 4))
+            if policy_kind == 'numpy' and n_workers_arg > 1:
+                try:
+                    print(f"[trainer] forcing n_workers=1 for numpy policy to avoid pickling evaluator", flush=True)
+                except Exception:
+                    pass
+                n_workers_arg = 1
+
             trainer = ESTrainer(
                 evaluator,
                 policy_setter,
@@ -245,7 +259,7 @@ async def websocket_endpoint(ws: WebSocket):
                 population=trainer_params.get('population', 12),
                 sigma=trainer_params.get('sigma', 0.08),
                 alpha=trainer_params.get('alpha', 0.04),
-                n_workers=trainer_params.get('n_workers', 4),
+                n_workers=n_workers_arg,
             )
             trainer.start()
 

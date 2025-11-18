@@ -25,7 +25,15 @@ def evaluate_params(flat_params: np.ndarray, policy_kind: str, policy_kwargs: di
             policy.set_flat_params(flat_params)
         else:
             policy = NNController(**policy_kwargs)
-            policy.set_flat_params(flat_params)
+            # tolerate size mismatches gracefully
+            try:
+                policy.set_flat_params(flat_params)
+            except Exception:
+                try:
+                    policy.set_flat_params_safe(flat_params)
+                except Exception:
+                    # if setting params fails, re-raise to allow outer catcher to log
+                    raise
 
         engine = sim_kwargs.get('engine', 'simple')
         mode = sim_kwargs.get('mode', 'single')
@@ -55,7 +63,17 @@ def evaluate_params(flat_params: np.ndarray, policy_kind: str, policy_kwargs: di
 
         return float(total)
 
-    # Execute the evaluation inline. In typical usage the caller (ESTrainer)
-    # will invoke `evaluate_params` inside worker processes (multiprocessing.Pool),
-    # so submitting again to a thread pool is unnecessary overhead. Run directly.
-    return float(_run_eval())
+    # Execute evaluation and guard against runtime errors inside worker processes.
+    try:
+        return float(_run_eval())
+    except Exception as e:
+        # Print traceback to aid debugging when running under multiprocessing.
+        try:
+            import traceback
+
+            print(f"[es_worker] evaluate_params error: {e}", flush=True)
+            traceback.print_exc()
+        except Exception:
+            pass
+        # signal failure with a large negative reward (matches ESTrainer fallback)
+        return float(-1e6)

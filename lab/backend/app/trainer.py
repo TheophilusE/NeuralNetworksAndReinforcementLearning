@@ -51,6 +51,11 @@ class ESTrainer:
                     self.pool = mp.Pool(processes=min(self.n_workers, N))
                 rewards = self.pool.map(self.evaluator, thetas)
             except Exception as e:
+                # log exception to help debugging why pool.map failed
+                try:
+                    print(f"[ESTrainer] pool.map exception: {e}", flush=True)
+                except Exception:
+                    pass
                 try:
                     if self.pool is not None:
                         try:
@@ -64,8 +69,12 @@ class ESTrainer:
                 # fallback to sequential evaluation in current process
                 try:
                     rewards = [self.evaluator(t) for t in thetas]
-                except Exception:
-                    # if evaluation fails entirely, produce -inf rewards
+                except Exception as e2:
+                    try:
+                        print(f"[ESTrainer] sequential evaluation failed: {e2}", flush=True)
+                    except Exception:
+                        pass
+                    # if evaluation fails entirely, produce large negative rewards
                     rewards = np.full((N,), -1e6)
         else:
             rewards = [self.evaluator(t) for t in thetas]
