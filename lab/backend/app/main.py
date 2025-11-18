@@ -31,11 +31,13 @@ def register_active_sim(client_id: str, entry: dict) -> None:
         prev = active_simulations.get(client_id)
         if prev is not None:
             try:
-                # best-effort cleanup
+                print(f"[sim-registry] register_active_sim: replacing existing entry for client_id={client_id}", flush=True)
+                # best-effort cleanup of previous
                 if prev.get('stop_event') is not None:
                     prev['stop_event'].set()
             except Exception:
                 pass
+        print(f"[sim-registry] register_active_sim: registering client_id={client_id}", flush=True)
         active_simulations[client_id] = entry
 
 
@@ -45,6 +47,7 @@ def cleanup_active_sim(client_id: str) -> None:
         if not entry:
             return
         try:
+            print(f"[sim-registry] cleanup_active_sim: cleaning client_id={client_id}", flush=True)
             if entry.get('stop_event') is not None:
                 try:
                     entry['stop_event'].set()
@@ -89,8 +92,10 @@ def cleanup_active_sim(client_id: str) -> None:
         try:
             # remove registry entry
             del active_simulations[client_id]
+            print(f"[sim-registry] cleanup_active_sim: removed registry entry for client_id={client_id}", flush=True)
         except Exception:
             active_simulations.pop(client_id, None)
+            print(f"[sim-registry] cleanup_active_sim: popped registry entry for client_id={client_id}", flush=True)
 
 
 async def _prune_loop(interval: float = 5.0, idle_threshold: float = 10.0):

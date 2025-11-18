@@ -32,26 +32,6 @@ export function PendulumLive({ ws, target, useDegrees }: Props) {
     return () => ws.removeEventListener('message', onMsg)
   }, [ws])
 
-  // Auto-start simulation when WebSocket is ready
-  useEffect(() => {
-    if (!ws) return
-    const buildAndSend = () => {
-      const payload = JSON.stringify({ action: 'start', mode: 'single', controller: 'pid', dt: 0.02, target: typeof target === 'number' ? target : 0.0, engine: 'ode' })
-      try {
-        if (ws.readyState === WebSocket.OPEN) ws.send(payload)
-      } catch (e) {
-        // ignore send errors
-      }
-    }
-    // If already open, send immediately; otherwise wait for open
-    if (ws.readyState === WebSocket.OPEN) {
-      buildAndSend()
-    } else {
-      const onOpen = () => buildAndSend()
-      ws.addEventListener('open', onOpen)
-      return () => ws.removeEventListener('open', onOpen)
-    }
-  }, [ws, target])
 
   useEffect(() => {
     let raf = 0

@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ThreeScene from './ThreeScene'
 import UIOverlay from './UIOverlay'
-import PendulumCompare from './PendulumCompare'
 import PendulumLive from './PendulumLive'
 
 type Mode = 'single' | 'double'
