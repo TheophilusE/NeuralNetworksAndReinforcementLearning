@@ -22,13 +22,14 @@ export default function ThreeScene({ state, scene, onFps }: any) {
     const [serverIntervalMs, setServerIntervalMs] = useState<number | null>(null)
     const lastServerTsRef = useRef<number | null>(null)
 
-    useEffect(() => { stateRef.current = state
+    useEffect(() => {
+        stateRef.current = state
         try {
             const now = performance.now()
             const last = lastServerTsRef.current
             if (last != null) setServerIntervalMs(now - last)
             lastServerTsRef.current = now
-        } catch {}
+        } catch { }
     }, [state])
 
     useEffect(() => { sceneRef.current = scene }, [scene])
@@ -54,7 +55,7 @@ export default function ThreeScene({ state, scene, onFps }: any) {
                 const c = new THREE.Color(nr[0], nr[1], nr[2])
                 const opacity = nr[3]
                 mat = new THREE.MeshStandardMaterial({ color: c, metalness: 0.1, roughness: 0.6, transparent: opacity < 0.999, opacity: opacity })
-                ;(mat as any).emissive = new THREE.Color(c).multiplyScalar(0.02)
+                    ; (mat as any).emissive = new THREE.Color(c).multiplyScalar(0.02)
             }
             // Support several common geometry types (numbers used by some pybullet versions)
             const gt = vis && vis.geom_type
@@ -116,7 +117,7 @@ export default function ThreeScene({ state, scene, onFps }: any) {
                 geom = new THREE.BoxGeometry(Math.max(0.001, d[0] * 2), Math.max(0.001, d[1] * 2), Math.max(0.001, d[2] * 2))
                 return new THREE.Mesh(geom, mat)
             }
-        } catch (e) {}
+        } catch (e) { }
         geom = new THREE.BoxGeometry(0.12, 0.12, 0.12)
         return new THREE.Mesh(geom, mat)
     }
@@ -285,7 +286,7 @@ export default function ThreeScene({ state, scene, onFps }: any) {
             if (rafRef.current) cancelAnimationFrame(rafRef.current)
             renderer.dispose()
             window.removeEventListener('resize', resize)
-            try { ro.disconnect() } catch {}
+            try { ro.disconnect() } catch { }
             if (el && renderer.domElement) el.removeChild(renderer.domElement)
         }
     }, [])
@@ -325,7 +326,7 @@ export default function ThreeScene({ state, scene, onFps }: any) {
             group.traverse((obj: any) => {
                 if (obj.isMesh) {
                     if (obj.material) {
-                        try { (obj.material as any).wireframe = wireframeEnabled } catch (e) {}
+                        try { (obj.material as any).wireframe = wireframeEnabled } catch (e) { }
                     }
                     obj.castShadow = shadowsEnabled
                     obj.receiveShadow = shadowsEnabled

@@ -50,7 +50,7 @@ export default function App() {
         return
       }
 
-        const sendStart = () => {
+      const sendStart = () => {
         if (!sock || sock.readyState !== WebSocket.OPEN) return
         try {
           const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'ode' }
@@ -112,9 +112,10 @@ export default function App() {
     return () => {
       mounted = false
       if (reconnectTimer) window.clearTimeout(reconnectTimer)
-      try { sock && sock.close() } catch {}
+      try { sock && sock.close() } catch { }
     }
   }, [])
+  
   // Debounced auto-restart when top-level config changes (mode/controller/nnFramework/target)
   const restartTimerRef = useRef<number | null>(null)
   useEffect(() => {
@@ -123,7 +124,7 @@ export default function App() {
     // debounce 300ms
     restartTimerRef.current = window.setTimeout(() => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return
-        try {
+      try {
         const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'ode' }
         if (controller === 'nn') payload.nn_framework = nnFramework
         if (controller === 'pid') {
@@ -207,6 +208,7 @@ export default function App() {
         onChangeNNFramework={(f) => setNnFramework(f)}
         currentPolicyName={currentPolicyName}
         onSetTrack={sendSetTrack}
+        currentTrack={confirmedTrack}
       />
       {/* Training Stats card removed */}
       <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 100000 }}>

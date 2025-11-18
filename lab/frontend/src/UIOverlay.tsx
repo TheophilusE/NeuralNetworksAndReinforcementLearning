@@ -50,10 +50,18 @@ export default function UIOverlay({
   onChangeNNFramework,
   currentPolicyName,
   onSetTrack,
+  currentTrack,
 }: Props) {
   const [policyName, setPolicyName] = useState('default')
   const [trackLengthLocal, setTrackLengthLocal] = useState<string>('2.0')
   const [confirmedTrackLocal, setConfirmedTrackLocal] = useState<number | null>(null)
+  useEffect(() => {
+    // Sync confirmed track when parent prop changes (server confirmation)
+    if (typeof currentTrack === 'number') {
+      setConfirmedTrackLocal(currentTrack)
+      setTrackLengthLocal(String(currentTrack))
+    }
+  }, [currentTrack])
   // support both controlled (via props) and uncontrolled (local) modes for the deg toggle
   const [localUseDegrees, setLocalUseDegrees] = useState(false)
   const effectiveUseDegrees = typeof useDegrees === 'boolean' ? useDegrees : localUseDegrees
@@ -62,7 +70,7 @@ export default function UIOverlay({
     if (target === undefined || target === null || Number.isNaN(target)) return ''
     return effectiveUseDegrees ? String((target * 180 / Math.PI).toFixed(2)) : String(target)
   })()
-  
+
 
   return (
     <div className="glass overlay">
@@ -144,7 +152,10 @@ export default function UIOverlay({
               className="btn"
               onClick={() => {
                 const v = parseFloat(trackLengthLocal)
-                if (Number.isFinite(v) && onSetTrack) onSetTrack(v)
+                if (!Number.isFinite(v)) return
+                if (onSetTrack) onSetTrack(v)
+                // optimistic local confirmation until server reply arrives
+                setConfirmedTrackLocal(v)
               }}
             >
               Set
@@ -158,7 +169,7 @@ export default function UIOverlay({
             NN Framework:
             <StyledSelect value={nnFramework} onChange={(v) => onChangeNNFramework(v as any)} options={[{ value: 'numpy', label: 'Numpy' }, { value: 'torch', label: 'PyTorch' }]} />
           </label>
-        
+
           <div style={{ marginTop: 6 }}>
             <strong>Loaded:</strong> {currentPolicyName ? currentPolicyName : 'none'}
           </div>
