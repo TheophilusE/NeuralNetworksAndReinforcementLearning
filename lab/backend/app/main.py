@@ -394,25 +394,37 @@ async def websocket_endpoint(ws: WebSocket):
                     if 'steps' in params:
                         trainer_params['steps'] = int(params['steps'])
 
-                    # if a trainer is already running, update its attributes
+                    # If a trainer is running, stop it and restart with new params
                     if trainer:
                         try:
-                            trainer.population = trainer_params.get('population', trainer.population)
-                            trainer.sigma = trainer_params.get('sigma', trainer.sigma)
-                            trainer.alpha = trainer_params.get('alpha', trainer.alpha)
-                            # if worker count changed, recreate pool on next iteration
-                            new_workers = trainer_params.get('n_workers', trainer.n_workers)
-                            if getattr(trainer, 'n_workers', None) != new_workers:
-                                trainer.n_workers = new_workers
-                                if getattr(trainer, 'pool', None) is not None:
-                                    try:
-                                        trainer.pool.close()
-                                        trainer.pool.join()
-                                    except Exception:
-                                        pass
-                                    trainer.pool = None
+                            trainer.stop()
                         except Exception:
                             pass
+                        trainer = None
+                    if stats_poller:
+                        try:
+                            stats_poller.cancel()
+                        except Exception:
+                            pass
+                        stats_poller = None
+
+                    # update the trainer_params and create a fresh trainer
+                    try:
+                        # Build a minimal 'start' object with mode/dt for the trainer starter
+                        class _StartLike:
+                            pass
+
+                        start_like = _StartLike()
+                        start_like.mode = getattr(sim, 'mode', 'single') if sim is not None else 'single'
+                        start_like.dt = getattr(sim, 'dt', 0.02) if sim is not None else 0.02
+
+                        # start_trainer_for will create a new trainer using trainer_params
+                        try:
+                            start_trainer_for(controller, sim, start_like)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
 
                     await ws.send_text(json.dumps({"trainer_params": trainer_params}))
                 except Exception as e:

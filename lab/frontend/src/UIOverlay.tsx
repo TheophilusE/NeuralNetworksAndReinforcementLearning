@@ -211,11 +211,48 @@ export default function UIOverlay({
             </div>
           </div>
 
-          <div style={{ padding: 8 }} className="glass">
+          <div style={{ padding: 8, width: 220 }} className="glass">
             <div style={{ fontSize: 12, marginBottom: 6 }}>Training Status</div>
             <div>Running: {trainingStats ? String(trainingStats.running ?? true) : 'unknown'}</div>
             <div>Iter: {trainingStats ? String(trainingStats.iter ?? '-') : '-'}</div>
             <div>Last reward: {trainingStats && typeof trainingStats.last_reward !== 'undefined' ? trainingStats.last_reward.toFixed(3) : '-'}</div>
+            <div style={{ marginTop: 8 }}>
+              <small>Reward history</small>
+              <div style={{ width: 200, height: 48, marginTop: 6 }}>
+                {trainingStats && Array.isArray(trainingStats.history) && trainingStats.history.length > 0 ? (
+                  <svg viewBox="0 0 200 48" preserveAspectRatio="none" width="200" height="48">
+                    {
+                      (() => {
+                        const hist: number[] = trainingStats.history.slice(-100)
+                        const H = 48
+                        const W = 200
+                        let min = Math.min(...hist)
+                        let max = Math.max(...hist)
+                        if (min === max) {
+                          // avoid zero range
+                          min = min - 1
+                          max = max + 1
+                        }
+                        const points = hist.map((v, i) => {
+                          const x = (i / (hist.length - 1 || 1)) * W
+                          const y = H - ((v - min) / (max - min)) * H
+                          return `${x.toFixed(1)},${y.toFixed(1)}`
+                        })
+                        const poly = points.join(' ')
+                        return (
+                          <>
+                            <polyline points={poly} fill="none" stroke="#38a169" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                            <rect x={0} y={0} width={W} height={H} fill="none" stroke="#222" opacity={0.06} />
+                          </>
+                        )
+                      })()
+                    }
+                  </svg>
+                ) : (
+                  <div style={{ width: 200, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666' }}>no data</div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
