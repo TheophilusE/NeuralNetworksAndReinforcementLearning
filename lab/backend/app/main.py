@@ -21,6 +21,8 @@ import uuid
 # only one active simulation (thread or coroutine) exists per client id.
 active_simulations: dict = {}
 active_simulations_lock = threading.Lock()
+pruner_task = None
+pruner_task_lock = threading.Lock()
 
 
 def register_active_sim(client_id: str, entry: dict) -> None:
@@ -90,6 +92,58 @@ def cleanup_active_sim(client_id: str) -> None:
         except Exception:
             active_simulations.pop(client_id, None)
 
+
+async def _prune_loop(interval: float = 5.0, idle_threshold: float = 10.0):
+    """Background coroutine to prune stale/finished simulation entries.
+
+    This checks entries in `active_simulations` and removes ones where
+    the drain task is finished or the thread future is done, or the
+    sim is not running. This is best-effort cleanup for cases where
+    disconnects weren't detected.
+    """
+    while True:
+        try:
+            to_cleanup = []
+            with active_simulations_lock:
+                for cid, entry in list(active_simulations.items()):
+                    try:
+                        drain = entry.get('drain_task')
+                        fut = entry.get('thread_future')
+                        coro = entry.get('coroutine_task')
+                        sim_obj = entry.get('sim')
+                        # If drain task exists and is done, mark for cleanup
+                        if drain is not None and getattr(drain, 'done', lambda: False)():
+                            to_cleanup.append(cid)
+                            continue
+                        # If thread future exists and is done/cancelled, mark
+                        if fut is not None and getattr(fut, 'done', lambda: False)():
+                            to_cleanup.append(cid)
+                            continue
+                        # If coroutine task exists and is done, mark
+                        if coro is not None and getattr(coro, 'done', lambda: False)():
+                            to_cleanup.append(cid)
+                            continue
+                        # If sim object exists and not running, mark
+                        if sim_obj is not None:
+                            try:
+                                if not getattr(sim_obj, 'running', True):
+                                    to_cleanup.append(cid)
+                                    continue
+                            except Exception:
+                                to_cleanup.append(cid)
+                                continue
+                    except Exception:
+                        to_cleanup.append(cid)
+            # perform cleanup outside of lock
+            for cid in to_cleanup:
+                try:
+                    cleanup_active_sim(cid)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        await asyncio.sleep(interval)
+
 app = FastAPI(title="NN & RL Lab Backend")
 
 app.add_middleware(
@@ -130,6 +184,18 @@ async def websocket_endpoint(ws: WebSocket):
     engine = "simple"
     # trainer_params is a mutable holder so the UI can update hyperparameters live.
     trainer_params = {"population": 12, "sigma": 0.08, "alpha": 0.04, "steps": 100, "n_workers": 4}
+
+    # ensure the background pruner is running once per process
+    global pruner_task
+    try:
+        with pruner_task_lock:
+            if pruner_task is None:
+                try:
+                    pruner_task = asyncio.create_task(_prune_loop())
+                except Exception:
+                    pruner_task = None
+    except Exception:
+        pass
 
     def start_trainer_for(controller_obj, sim_obj, start_msg_local):
         nonlocal trainer, stats_poller, trainer_params
