@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { WSProvider, useWS } from './WSContext'
 import ThreeScene from './ThreeScene'
 import UIOverlay from './UIOverlay'
 import PendulumLive from './PendulumLive'
@@ -6,8 +7,8 @@ import PendulumLive from './PendulumLive'
 type Mode = 'single' | 'double'
 type Controller = 'pid' | 'nn'
 
-export default function App() {
-  const [ws, setWs] = useState<WebSocket | null>(null)
+function AppInner() {
+  const ws = useWS()
   const [running, setRunning] = useState(false)
   const [mode, setMode] = useState<Mode>('single')
   const [controller, setController] = useState<Controller>('pid')
@@ -27,167 +28,96 @@ export default function App() {
   const [confirmedGravity, setConfirmedGravity] = useState<number | null>(null)
   const [trainerParams, setTrainerParams] = useState<{ population?: number; sigma?: number; alpha?: number; steps?: number }>({ population: 12, sigma: 0.08, alpha: 0.04, steps: 100 })
 
+  // Attach socket event handlers (message/open/close) when context ws changes
   useEffect(() => {
-    let mounted = true
-    let sock: WebSocket | null = null
-    let reconnectTimer: number | null = null
-
-    // Use a module-scoped singleton socket so React StrictMode remounts
-    // don't create duplicate connections.
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    if ((window as any).__nnal_global_socket === undefined) (window as any).__nnal_global_socket = null
-
-    const connect = async () => {
-      if (!mounted) return
-      // Do a quick health check before creating a WebSocket to avoid
-      // noisy browser errors when the backend isn't up yet.
+    if (!ws) return
+    const onOpen = () => {
+      console.log('ws open')
+      // send initial start so server resets env for this client
       try {
-        const res = await fetch('http://localhost:8000/health', { cache: 'no-store' })
-        if (!res.ok) throw new Error('health check failed')
-      } catch (err) {
-        // Backend not ready; schedule reconnect
-        reconnectTimer = window.setTimeout(() => connect(), 1000)
-        return
-      }
-
-      try {
-        // Reuse an existing global socket if one exists
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        const globalSock = (window as any).__nnal_global_socket as WebSocket | null
-        if (globalSock && globalSock.readyState !== WebSocket.CLOSED && globalSock.readyState !== WebSocket.CLOSING) {
-          sock = globalSock
-        } else {
-          sock = new WebSocket('ws://localhost:8000/ws')
-          // store globally so subsequent mounts reuse it
-          try { (window as any).__nnal_global_socket = sock } catch (e) { }
+        const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'ode' }
+        if (typeof gravity === 'number') payload.gravity = gravity
+        if (controller === 'nn') payload.nn_framework = nnFramework
+        if (controller === 'pid') {
+          payload.kp = pidParams.kp
+          payload.ki = pidParams.ki
+          payload.kd = pidParams.kd
         }
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload))
       } catch (e) {
-        // Some environments may throw synchronously (rare); schedule reconnect
-        console.warn('failed to construct WebSocket, will retry', e)
-        reconnectTimer = window.setTimeout(() => connect(), 1000)
-        return
+        console.warn('failed to send initial start', e)
       }
+    }
 
-      const sendStart = () => {
-        if (!sock || sock.readyState !== WebSocket.OPEN) return
-        try {
-          const payload: any = { action: 'start', mode, controller, dt: 0.02, target, engine: 'ode' }
-          if (typeof gravity === 'number') payload.gravity = gravity
-          if (controller === 'nn') payload.nn_framework = nnFramework
-          if (controller === 'pid') {
-            payload.kp = pidParams.kp
-            payload.ki = pidParams.ki
-            payload.kd = pidParams.kd
-          }
-          sock.send(JSON.stringify(payload))
-        } catch (e) {
-          console.warn('failed to send start', e)
-        }
-      }
+    const onMessage = (e: MessageEvent) => {
+      try {
+        const msg = JSON.parse(e.data)
+        if (msg.state) setState(msg.state)
 
-      const onOpen = () => {
-        console.log('ws open')
-        setWs(sock)
-        // send initial start so server resets env for this client
-        sendStart()
-      }
-
-      const onMessage = (e: MessageEvent) => {
-        try {
-          const msg = JSON.parse(e.data)
-          if (msg.state) setState(msg.state)
-
-          // Scene messages are tagged with a `session_id`. Only apply
-          // scenes that belong to the current session; this prevents
-          // stale or interleaved scenes from different sim instances
-          // being rendered simultaneously.
-          if (msg.scene) {
-            const sid = typeof msg.session_id !== 'undefined' ? Number(msg.session_id) : null
-            if (sceneSessionId == null) {
-              if (sid != null) setSceneSessionId(sid)
+        if (msg.scene) {
+          const sid = typeof msg.session_id !== 'undefined' ? Number(msg.session_id) : null
+          if (sceneSessionId == null) {
+            if (sid != null) setSceneSessionId(sid)
+            setScene(msg.scene)
+          } else {
+            if (sid == null || sid === sceneSessionId) {
               setScene(msg.scene)
             } else {
-              if (sid == null || sid === sceneSessionId) {
-                setScene(msg.scene)
-              } else {
-                // ignore stale scene
-              }
+              // ignore stale scene
             }
           }
-
-          if (msg.scene_reset) {
-            setSceneResetId(msg.reset_id || Date.now())
-            if (typeof msg.session_id !== 'undefined') setSceneSessionId(Number(msg.session_id))
-          }
-
-          if (typeof msg.track_set !== 'undefined') setConfirmedTrack(Number(msg.track_set))
-          if (msg.training_stats) setTrainingStats(msg.training_stats)
-          if (msg.trainer_params) setTrainerParams(msg.trainer_params)
-          if (typeof msg.gravity_set !== 'undefined') setConfirmedGravity(Number(msg.gravity_set))
-          if (msg.policy_loaded) {
-            const p = msg.policy_loaded as string
-            const name = p.split('/').pop() || p
-            setCurrentPolicyName(name)
-          }
-          if (msg.policy_saved) {
-            const p = msg.policy_saved as string
-            const name = p.split('/').pop() || p
-            setCurrentPolicyName(name)
-          }
-        } catch (err) {
-          console.error('ws msg', err)
         }
-      }
 
-      const onClose = () => {
-        console.log('ws closed')
-        setWs(null)
-        if (!mounted) return
-        // try reconnect after 1s
-        reconnectTimer = window.setTimeout(() => connect(), 1000)
-      }
+        if (msg.scene_reset) {
+          setSceneResetId(msg.reset_id || Date.now())
+          if (typeof msg.session_id !== 'undefined') setSceneSessionId(Number(msg.session_id))
+        }
 
-      const onError = (ev: Event) => {
-        console.warn('ws error', ev)
-      }
-
-      try {
-        // attach listeners; when reusing global socket we add/remove listeners in cleanup
-        sock.addEventListener('open', onOpen)
-        sock.addEventListener('message', onMessage)
-        sock.addEventListener('close', onClose)
-        sock.addEventListener('error', onError)
-      } catch (e) {
-        // fallback to property setters if addEventListener not supported
-        try { sock.onopen = onOpen } catch {}
-        try { sock.onmessage = onMessage as any } catch {}
-        try { sock.onclose = onClose } catch {}
-        try { sock.onerror = onError as any } catch {}
+        if (typeof msg.track_set !== 'undefined') setConfirmedTrack(Number(msg.track_set))
+        if (msg.training_stats) setTrainingStats(msg.training_stats)
+        if (msg.trainer_params) setTrainerParams(msg.trainer_params)
+        if (typeof msg.gravity_set !== 'undefined') setConfirmedGravity(Number(msg.gravity_set))
+        if (msg.policy_loaded) {
+          const p = msg.policy_loaded as string
+          const name = p.split('/').pop() || p
+          setCurrentPolicyName(name)
+        }
+        if (msg.policy_saved) {
+          const p = msg.policy_saved as string
+          const name = p.split('/').pop() || p
+          setCurrentPolicyName(name)
+        }
+      } catch (err) {
+        console.error('ws msg', err)
       }
     }
 
-    connect()
+    const onClose = () => {
+      console.log('ws closed')
+      setRunning(false)
+    }
+
+    const onError = (ev: Event) => console.warn('ws error', ev)
+
+    try {
+      ws.addEventListener('open', onOpen)
+      ws.addEventListener('message', onMessage)
+      ws.addEventListener('close', onClose)
+      ws.addEventListener('error', onError)
+    } catch (e) {
+      try { (ws as any).onopen = onOpen } catch {}
+      try { (ws as any).onmessage = onMessage } catch {}
+      try { (ws as any).onclose = onClose } catch {}
+      try { (ws as any).onerror = onError } catch {}
+    }
+
     return () => {
-      mounted = false
-      if (reconnectTimer) window.clearTimeout(reconnectTimer)
-      // do not forcibly close a globally-shared socket here; only remove listeners
-      try {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        const globalSock = (window as any).__nnal_global_socket as WebSocket | null
-        if (sock && globalSock === sock) {
-          try { sock.removeEventListener('open', () => {}) } catch {}
-          try { sock.removeEventListener('message', () => {}) } catch {}
-          try { sock.removeEventListener('close', () => {}) } catch {}
-          try { sock.removeEventListener('error', () => {}) } catch {}
-        }
-      } catch (e) {
-        // ignore
-      }
+      try { ws.removeEventListener('open', onOpen) } catch {}
+      try { ws.removeEventListener('message', onMessage) } catch {}
+      try { ws.removeEventListener('close', onClose) } catch {}
+      try { ws.removeEventListener('error', onError) } catch {}
     }
-  }, [])
+  }, [ws])
   
   // Debounced auto-restart when top-level config changes (mode/controller/nnFramework/target)
   const restartTimerRef = useRef<number | null>(null)
@@ -316,5 +246,13 @@ export default function App() {
         <PendulumLive ws={ws} target={target} useDegrees={useDegrees} />
       </div>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <WSProvider>
+      <AppInner />
+    </WSProvider>
   )
 }
