@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 
-// Module-scoped singleton socket — ensures one socket per page
+// Module-scoped singleton socket - ensures one socket per page
 let globalSock: WebSocket | null = null
 let reconnectTimer: number | null = null
 

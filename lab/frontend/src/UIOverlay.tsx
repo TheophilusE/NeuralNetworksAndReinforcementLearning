@@ -221,19 +221,49 @@ export default function UIOverlay({
             <div style={{ fontSize: 12, marginBottom: 6 }}>Trainer Hyperparams</div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <label style={{ fontSize: 12 }}>Population</label>
-              <input type="number" value={localTrainerParams.population} min={2} step={1} onChange={(e) => setLocalTrainerParams((s) => ({ ...s, population: parseInt(e.target.value || '0') }))} style={{ width: 80 }} />
+              <input
+                className="input focus-ring"
+                type="number"
+                value={localTrainerParams.population ?? ''}
+                min={2}
+                step={1}
+                onChange={(e) => setLocalTrainerParams((s) => ({ ...s, population: parseInt(e.target.value || '0') }))}
+                style={{ width: 80, minWidth: 60 }}
+              />
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
               <label style={{ fontSize: 12 }}>Sigma</label>
-              <input type="number" value={localTrainerParams.sigma} step={0.001} onChange={(e) => setLocalTrainerParams((s) => ({ ...s, sigma: parseFloat(e.target.value || '0') }))} style={{ width: 80 }} />
+              <input
+                className="input focus-ring"
+                type="number"
+                value={localTrainerParams.sigma ?? ''}
+                step={0.001}
+                onChange={(e) => setLocalTrainerParams((s) => ({ ...s, sigma: parseFloat(e.target.value || '0') }))}
+                style={{ width: 80, minWidth: 60 }}
+              />
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
               <label style={{ fontSize: 12 }}>Alpha</label>
-              <input type="number" value={localTrainerParams.alpha} step={0.001} onChange={(e) => setLocalTrainerParams((s) => ({ ...s, alpha: parseFloat(e.target.value || '0') }))} style={{ width: 80 }} />
+              <input
+                className="input focus-ring"
+                type="number"
+                value={localTrainerParams.alpha ?? ''}
+                step={0.001}
+                onChange={(e) => setLocalTrainerParams((s) => ({ ...s, alpha: parseFloat(e.target.value || '0') }))}
+                style={{ width: 80, minWidth: 60 }}
+              />
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
               <label style={{ fontSize: 12 }}>Steps</label>
-              <input type="number" value={localTrainerParams.steps} min={1} step={1} onChange={(e) => setLocalTrainerParams((s) => ({ ...s, steps: parseInt(e.target.value || '0') }))} style={{ width: 80 }} />
+              <input
+                className="input focus-ring"
+                type="number"
+                value={localTrainerParams.steps ?? ''}
+                min={1}
+                step={1}
+                onChange={(e) => setLocalTrainerParams((s) => ({ ...s, steps: parseInt(e.target.value || '0') }))}
+                style={{ width: 80, minWidth: 60 }}
+              />
             </div>
             <div style={{ marginTop: 8 }}>
               <button
