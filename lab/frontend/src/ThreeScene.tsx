@@ -432,7 +432,7 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
             // remove html label
             try {
                 if (labelDomRef.current && el) {
-                    try { el.removeChild(labelDomRef.current) } catch { }
+                    try { el.removeChild(labelDomRef.current) } catch { } 
                     labelDomRef.current = null
                 }
             } catch { }

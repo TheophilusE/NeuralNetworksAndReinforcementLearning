@@ -64,6 +64,51 @@ async def websocket_endpoint(ws: WebSocket):
         except Exception:
             ctrl_b = NNController()
 
+        # Helper to start an ESTrainer for a given controller if it looks NN-like
+        def start_trainer_for(controller_obj, sim_obj, start_msg_local):
+            nonlocal trainer, stats_poller
+            try:
+                if controller_obj is None or not hasattr(controller_obj, 'get_flat_params'):
+                    return
+                # avoid starting duplicate trainer
+                if trainer and trainer.running:
+                    return
+
+                policy_kind = 'torch' if isinstance(controller_obj, TorchNNPolicy) else 'numpy'
+                if hasattr(controller_obj, 'sizes'):
+                    hidden = tuple(controller_obj.sizes[1:-1])
+                else:
+                    hidden = (32, 32)
+
+                def evaluator(flat: np.ndarray) -> float:
+                    return es_worker.evaluate_params(flat, policy_kind, {'hidden_sizes': hidden},
+                                                      {'engine': engine, 'mode': start_msg_local.mode, 'dt': start_msg_local.dt, 'track_length': getattr(sim_obj, 'track_length', 2.0)}, steps=100)
+
+                def policy_setter(new_theta):
+                    if new_theta is None:
+                        return controller_obj.get_flat_params()
+                    else:
+                        controller_obj.set_flat_params(np.array(new_theta))
+
+                dim = controller_obj.num_params()
+                trainer = ESTrainer(evaluator, policy_setter, dim=dim, population=12, sigma=0.08, alpha=0.04, n_workers=4)
+                trainer.start()
+
+                async def poll_stats():
+                    try:
+                        while trainer and trainer.running:
+                            await asyncio.sleep(0.5)
+                            try:
+                                await ws.send_text(json.dumps({"training_stats": trainer.stats}))
+                            except Exception:
+                                break
+                    except asyncio.CancelledError:
+                        pass
+
+                stats_poller = asyncio.create_task(poll_stats())
+            except Exception:
+                pass
+
         # Best-effort: align initial states
         try:
             if hasattr(sim_a, 'theta'):
@@ -79,6 +124,11 @@ async def websocket_endpoint(ws: WebSocket):
                 if hasattr(sim_a, 'get_scene_tree'):
                     scene_tree = sim_a.get_scene_tree()
                     await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(sim_a, 'track_length', None)}))
+        except Exception:
+            pass
+        # Start trainer automatically for ctrl_b if it's an NN controller
+        try:
+            start_trainer_for(ctrl_b, sim_b, start_msg)
         except Exception:
             pass
     except Exception:
@@ -116,6 +166,20 @@ async def websocket_endpoint(ws: WebSocket):
                         sim = PendulumSimulator(mode=start.mode, dt=start.dt, track_length=requested_track)
                     else:
                         sim = PendulumSimulator(mode=start.mode, dt=start.dt)
+
+                # stop any existing trainer; if the new controller is NN we'll start a fresh trainer below
+                if trainer:
+                    try:
+                        trainer.stop()
+                    except Exception:
+                        pass
+                    trainer = None
+                if stats_poller:
+                    try:
+                        stats_poller.cancel()
+                    except Exception:
+                        pass
+                    stats_poller = None
 
                 if start.controller == "pid":
                     # create PID controller and apply any provided initial gains
@@ -218,6 +282,11 @@ async def websocket_endpoint(ws: WebSocket):
                         await ws.send_text(json.dumps({"scene": sim.get_scene_tree()}))
                 except Exception as e:
                     await ws.send_text(json.dumps({"scene_error": str(e)}))
+                # If the chosen controller is NN-like, start trainer automatically
+                try:
+                    start_trainer_for(controller, sim, start)
+                except Exception:
+                    pass
             elif action == "stop":
                 if sim:
                     sim.running = False

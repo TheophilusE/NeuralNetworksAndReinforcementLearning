@@ -2,7 +2,7 @@ import numpy as np
 from .controllers import NNController, TorchNNPolicy
 from .ode_env import OdeCartPole
 from .simulation import PendulumSimulator
-from .thread_worker import submit_task
+# thread_worker.submit_task not used here; evaluator runs inline in worker processes
 
 
 def evaluate_params(flat_params: np.ndarray, policy_kind: str, policy_kwargs: dict, sim_kwargs: dict, steps: int = 100) -> float:
@@ -30,12 +30,11 @@ def evaluate_params(flat_params: np.ndarray, policy_kind: str, policy_kwargs: di
         engine = sim_kwargs.get('engine', 'simple')
         mode = sim_kwargs.get('mode', 'single')
         dt = sim_kwargs.get('dt', 0.02)
-
-        if engine == 'pybullet':
-            # For backwards compatibility, map pybullet -> OdeCartPole (headless)
-            sim = OdeCartPole(mode=mode, dt=dt, gui=False)
+        # Prefer OdeCartPole when requested; otherwise use the simple PendulumSimulator.
+        if engine == 'ode':
+            sim = OdeCartPole(mode=mode, dt=dt, gui=False, track_length=sim_kwargs.get('track_length', 2.0))
         else:
-            sim = PendulumSimulator(mode=mode, dt=dt)
+            sim = PendulumSimulator(mode=mode, dt=dt, track_length=sim_kwargs.get('track_length', 2.0))
 
         total = 0.0
         for _ in range(steps):
@@ -56,6 +55,7 @@ def evaluate_params(flat_params: np.ndarray, policy_kind: str, policy_kwargs: di
 
         return float(total)
 
-    # Submit to central worker and wait for result
-    fut = submit_task(_run_eval)
-    return float(fut.result())
+    # Execute the evaluation inline. In typical usage the caller (ESTrainer)
+    # will invoke `evaluate_params` inside worker processes (multiprocessing.Pool),
+    # so submitting again to a thread pool is unnecessary overhead. Run directly.
+    return float(_run_eval())
