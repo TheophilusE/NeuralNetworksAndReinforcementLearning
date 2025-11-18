@@ -9,6 +9,7 @@ type Props = {
 export function PendulumLive({ ws, target, useDegrees }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dataRef = useRef<number[]>([])
+  const targetRef = useRef<number | null>(null)
   const maxLen = 800
   // The simulation is auto-started; no local running state needed
 
@@ -20,9 +21,14 @@ export function PendulumLive({ ws, target, useDegrees }: Props) {
         // server emits { t, state } for single-sim runs
         const state = msg.state || (msg.a && msg.a.state) || null
         if (!state) return
-        const theta = state.theta ?? state.th1 ?? 0.0
+        // Prefer controller-frame angle when provided by the backend
+        const ctrlAngle = (typeof msg.angle_controller === 'number') ? msg.angle_controller : (state.theta ?? state.th1 ?? 0.0)
         const arr = dataRef.current
-        arr.push(theta)
+        arr.push(ctrlAngle)
+        // update target display if backend sent the controller target
+        if (typeof msg.target_controller === 'number') {
+          targetRef.current = msg.target_controller
+        }
         if (arr.length > maxLen) arr.shift()
       } catch (e) {
         // ignore non-json
@@ -77,9 +83,10 @@ export function PendulumLive({ ws, target, useDegrees }: Props) {
       ctx.moveTo(0, y0)
       ctx.lineTo(w, y0)
       ctx.stroke()
-      // draw target line and label if available
-      if (typeof target === 'number' && Number.isFinite(target)) {
-        const yT = h - ((target - min) / span) * h
+      // draw target line and label if available. Prefer backend-sent controller target
+      const displayTarget = (typeof targetRef.current === 'number') ? targetRef.current : target
+      if (typeof displayTarget === 'number' && Number.isFinite(displayTarget)) {
+        const yT = h - ((displayTarget - min) / span) * h
         const y = Math.max(0, Math.min(h, yT))
         // dashed line
         ctx.save()
@@ -98,8 +105,8 @@ export function PendulumLive({ ws, target, useDegrees }: Props) {
         ctx.fill()
 
         // draw label box
-        const radText = `${target.toFixed(2)} rad`
-        const degText = `${(target * 180 / Math.PI).toFixed(1)}°`
+        const radText = `${displayTarget.toFixed(2)} rad`
+        const degText = `${(displayTarget * 180 / Math.PI).toFixed(1)}°`
         ctx.font = '12px system-ui, Arial'
         const padding = 6
         const txt = radText
@@ -121,7 +128,7 @@ export function PendulumLive({ ws, target, useDegrees }: Props) {
     }
     raf = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(raf)
-  }, [target, useDegrees])
+  }, [useDegrees])
 
   // intentionally no start/stop controls; sim is always running
 

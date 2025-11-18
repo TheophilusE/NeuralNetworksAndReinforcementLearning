@@ -16,6 +16,7 @@ import threading
 import time
 from .thread_worker import submit_task
 import uuid
+import math
 
 # Global registry of active simulations keyed by client_id. This ensures
 # only one active simulation (thread or coroutine) exists per client id.
@@ -413,12 +414,35 @@ async def websocket_endpoint(ws: WebSocket):
                                 except Exception:
                                     pass
                                 t_local += getattr(sim_obj, 'dt', 0.02)
+                                # compute controller-frame angle (upright == 0) so frontend
+                                # can display the same rest position the PID uses.
+                                try:
+                                    sim_state = sim_obj.get_state()
+                                    if 'theta' in sim_state:
+                                        sim_ang = float(sim_state.get('theta', 0.0))
+                                    else:
+                                        sim_ang = float(sim_state.get('th1', 0.0))
+                                except Exception:
+                                    sim_ang = 0.0
+                                # map simulator angle (upright==pi) -> controller frame (upright==0)
+                                ctrl_ang = sim_ang - math.pi
+                                while ctrl_ang > math.pi:
+                                    ctrl_ang -= 2 * math.pi
+                                while ctrl_ang < -math.pi:
+                                    ctrl_ang += 2 * math.pi
+                                try:
+                                    ctrl_target = float(getattr(start_msg, 'target', 0.0))
+                                except Exception:
+                                    ctrl_target = 0.0
+
                                 msg = {
                                     't': t_local,
-                                    'state': sim_obj.get_state(),
+                                    'state': sim_state,
                                     'controller': 'nn' if isinstance(controller_obj, NNController) else 'pid',
                                     'session_id': sim_session_id,
                                     'client_id': client_id_local,
+                                    'angle_controller': float(ctrl_ang),
+                                    'target_controller': float(ctrl_target),
                                 }
                                 if hasattr(sim_obj, 'get_scene_tree'):
                                     try:
@@ -736,12 +760,33 @@ async def run_sim(ws: WebSocket, sim, controller, start, sim_session_id=None, cl
             torque = controller.get_torque(state, target=start.target, dt=getattr(sim, 'dt', 0.02))
             sim.step(torque)
             t += sim.dt
+            # compute controller-frame angle for frontend display parity
+            try:
+                sim_state = sim.get_state()
+                if 'theta' in sim_state:
+                    sim_ang = float(sim_state.get('theta', 0.0))
+                else:
+                    sim_ang = float(sim_state.get('th1', 0.0))
+            except Exception:
+                sim_ang = 0.0
+            ctrl_ang = sim_ang - math.pi
+            while ctrl_ang > math.pi:
+                ctrl_ang -= 2 * math.pi
+            while ctrl_ang < -math.pi:
+                ctrl_ang += 2 * math.pi
+            try:
+                ctrl_target = float(getattr(start, 'target', 0.0))
+            except Exception:
+                ctrl_target = 0.0
+
             msg = {
                 "t": t,
-                "state": sim.get_state(),
+                "state": sim_state,
                 "controller": "nn" if isinstance(controller, NNController) else "pid",
                 "session_id": sim_session_id,
                 "client_id": client_id,
+                "angle_controller": float(ctrl_ang),
+                "target_controller": float(ctrl_target),
             }
             # include scene updates whenever the simulator exposes a scene tree
             if hasattr(sim, 'get_scene_tree'):
