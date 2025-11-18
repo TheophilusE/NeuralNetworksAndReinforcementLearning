@@ -22,6 +22,7 @@ export default function App() {
   const [pidParams, setPidParams] = useState({ kp: 30.0, ki: 0.0, kd: 2.0 })
   const [trainingStats, setTrainingStats] = useState<any>(null)
   const [confirmedTrack, setConfirmedTrack] = useState<number | null>(null)
+  const [trainerParams, setTrainerParams] = useState<{ population?: number; sigma?: number; alpha?: number; steps?: number }>({ population: 12, sigma: 0.08, alpha: 0.04, steps: 100 })
 
   useEffect(() => {
     let mounted = true
@@ -80,6 +81,7 @@ export default function App() {
           if (msg.scene) setScene(msg.scene)
           if (typeof msg.track_set !== 'undefined') setConfirmedTrack(Number(msg.track_set))
           if (msg.training_stats) setTrainingStats(msg.training_stats)
+          if (msg.trainer_params) setTrainerParams(msg.trainer_params)
           if (msg.policy_loaded) {
             const p = msg.policy_loaded as string
             const name = p.split('/').pop() || p
@@ -182,6 +184,15 @@ export default function App() {
     ws.send(JSON.stringify({ action: 'load_policy', name: name || 'default' }))
   }
 
+  const sendTrainerParams = (p: { population?: number; sigma?: number; alpha?: number; steps?: number }) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ action: 'set_trainer_params', params: p }))
+    } catch (e) {
+      console.warn('failed to send trainer params', e)
+    }
+  }
+
   return (
     <div className="app" style={{ position: 'relative', height: '100vh' }}>
       <ThreeScene state={state} scene={scene} onFps={(v: number) => setFps(v)} currentTrack={confirmedTrack} />
@@ -193,8 +204,6 @@ export default function App() {
         onChangeUseDegrees={(b: boolean) => setUseDegrees(b)}
         onChangeTarget={(t) => setTarget(t)}
         running={running}
-        onTrainStart={() => ws?.send(JSON.stringify({ action: 'train_start' }))}
-        onTrainStop={() => ws?.send(JSON.stringify({ action: 'train_stop' }))}
         onChangeMode={(m) => setMode(m)}
         onChangeController={(c) => setController(c)}
         fps={fps}
@@ -209,6 +218,9 @@ export default function App() {
         currentPolicyName={currentPolicyName}
         onSetTrack={sendSetTrack}
         currentTrack={confirmedTrack}
+        trainingStats={trainingStats}
+        trainerParams={trainerParams}
+        onTrainerParamsChange={(p) => sendTrainerParams(p)}
       />
       {/* Training Stats card removed */}
       <div style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 100000 }}>

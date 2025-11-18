@@ -6,8 +6,7 @@ type Props = {
   controller: 'pid' | 'nn'
   running: boolean
   // server now streams continuously; no start/stop from UI
-  onTrainStart: () => void
-  onTrainStop: () => void
+  // server now streams continuously; training is automatic when NN is selected
   onChangeMode: (m: 'single' | 'double') => void
   onChangeController: (c: 'pid' | 'nn') => void
   target?: number
@@ -26,13 +25,14 @@ type Props = {
   fps?: number
   onSetTrack?: (len: number) => void
   currentTrack?: number | null
+  trainingStats?: any
+  trainerParams?: { population?: number; sigma?: number; alpha?: number; steps?: number }
+  onTrainerParamsChange?: (p: { population?: number; sigma?: number; alpha?: number; steps?: number }) => void
 }
 
 export default function UIOverlay({
   mode,
   controller,
-  onTrainStart,
-  onTrainStop,
   onChangeMode,
   onChangeController,
   target,
@@ -51,10 +51,16 @@ export default function UIOverlay({
   currentPolicyName,
   onSetTrack,
   currentTrack,
+  trainingStats,
+  trainerParams,
+  onTrainerParamsChange,
 }: Props) {
   const [policyName, setPolicyName] = useState('default')
   const [trackLengthLocal, setTrackLengthLocal] = useState<string>('2.0')
   const [confirmedTrackLocal, setConfirmedTrackLocal] = useState<number | null>(null)
+  const [localTrainerParams, setLocalTrainerParams] = useState<{ population?: number; sigma?: number; alpha?: number; steps?: number }>(
+    () => ({ population: 12, sigma: 0.08, alpha: 0.04, steps: 100 })
+  )
   useEffect(() => {
     // Sync confirmed track when parent prop changes (server confirmation)
     if (typeof currentTrack === 'number') {
@@ -62,6 +68,9 @@ export default function UIOverlay({
       setTrackLengthLocal(String(currentTrack))
     }
   }, [currentTrack])
+  useEffect(() => {
+    if (trainerParams) setLocalTrainerParams(trainerParams)
+  }, [trainerParams])
   // support both controlled (via props) and uncontrolled (local) modes for the deg toggle
   const [localUseDegrees, setLocalUseDegrees] = useState(false)
   const effectiveUseDegrees = typeof useDegrees === 'boolean' ? useDegrees : localUseDegrees
@@ -122,12 +131,7 @@ export default function UIOverlay({
             </label>
           </div>
         </label>
-        <button className="btn fade-in" onClick={onTrainStart}>
-          Train Start
-        </button>
-        <button className="btn fade-in" onClick={onTrainStop}>
-          Train Stop
-        </button>
+        {/* Training is automatic for NN controller; use save/load to snapshot policies */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input className="input" value={policyName} onChange={(e) => setPolicyName(e.target.value)} style={{ width: 100, minWidth: 80 }} />
           <button className="btn" onClick={() => onSavePolicy(policyName)}>
@@ -172,6 +176,46 @@ export default function UIOverlay({
 
           <div style={{ marginTop: 6 }}>
             <strong>Loaded:</strong> {currentPolicyName ? currentPolicyName : 'none'}
+          </div>
+        </div>
+      )}
+      {controller === 'nn' && (
+        <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ padding: 8 }} className="glass">
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Trainer Hyperparams</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ fontSize: 12 }}>Population</label>
+              <input type="number" value={localTrainerParams.population} min={2} step={1} onChange={(e) => setLocalTrainerParams((s) => ({ ...s, population: parseInt(e.target.value || '0') }))} style={{ width: 80 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+              <label style={{ fontSize: 12 }}>Sigma</label>
+              <input type="number" value={localTrainerParams.sigma} step={0.001} onChange={(e) => setLocalTrainerParams((s) => ({ ...s, sigma: parseFloat(e.target.value || '0') }))} style={{ width: 80 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+              <label style={{ fontSize: 12 }}>Alpha</label>
+              <input type="number" value={localTrainerParams.alpha} step={0.001} onChange={(e) => setLocalTrainerParams((s) => ({ ...s, alpha: parseFloat(e.target.value || '0') }))} style={{ width: 80 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+              <label style={{ fontSize: 12 }}>Steps</label>
+              <input type="number" value={localTrainerParams.steps} min={1} step={1} onChange={(e) => setLocalTrainerParams((s) => ({ ...s, steps: parseInt(e.target.value || '0') }))} style={{ width: 80 }} />
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <button
+                className="btn"
+                onClick={() => {
+                  if (onTrainerParamsChange) onTrainerParamsChange(localTrainerParams)
+                }}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+
+          <div style={{ padding: 8 }} className="glass">
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Training Status</div>
+            <div>Running: {trainingStats ? String(trainingStats.running ?? true) : 'unknown'}</div>
+            <div>Iter: {trainingStats ? String(trainingStats.iter ?? '-') : '-'}</div>
+            <div>Last reward: {trainingStats && typeof trainingStats.last_reward !== 'undefined' ? trainingStats.last_reward.toFixed(3) : '-'}</div>
           </div>
         </div>
       )}

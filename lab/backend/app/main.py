@@ -65,8 +65,11 @@ async def websocket_endpoint(ws: WebSocket):
             ctrl_b = NNController()
 
         # Helper to start an ESTrainer for a given controller if it looks NN-like
+        # trainer_params is a mutable holder so the UI can update hyperparameters live.
+        trainer_params = {"population": 12, "sigma": 0.08, "alpha": 0.04, "steps": 100, "n_workers": 4}
+
         def start_trainer_for(controller_obj, sim_obj, start_msg_local):
-            nonlocal trainer, stats_poller
+            nonlocal trainer, stats_poller, trainer_params
             try:
                 if controller_obj is None or not hasattr(controller_obj, 'get_flat_params'):
                     return
@@ -80,9 +83,15 @@ async def websocket_endpoint(ws: WebSocket):
                 else:
                     hidden = (32, 32)
 
+                # evaluator reads trainer_params['steps'] so updates can take effect live
                 def evaluator(flat: np.ndarray) -> float:
-                    return es_worker.evaluate_params(flat, policy_kind, {'hidden_sizes': hidden},
-                                                      {'engine': engine, 'mode': start_msg_local.mode, 'dt': start_msg_local.dt, 'track_length': getattr(sim_obj, 'track_length', 2.0)}, steps=100)
+                    return es_worker.evaluate_params(
+                        flat,
+                        policy_kind,
+                        {'hidden_sizes': hidden},
+                        {'engine': engine, 'mode': start_msg_local.mode, 'dt': start_msg_local.dt, 'track_length': getattr(sim_obj, 'track_length', 2.0)},
+                        steps=trainer_params.get('steps', 100),
+                    )
 
                 def policy_setter(new_theta):
                     if new_theta is None:
@@ -91,7 +100,16 @@ async def websocket_endpoint(ws: WebSocket):
                         controller_obj.set_flat_params(np.array(new_theta))
 
                 dim = controller_obj.num_params()
-                trainer = ESTrainer(evaluator, policy_setter, dim=dim, population=12, sigma=0.08, alpha=0.04, n_workers=4)
+                # Create trainer using values from trainer_params
+                trainer = ESTrainer(
+                    evaluator,
+                    policy_setter,
+                    dim=dim,
+                    population=trainer_params.get('population', 12),
+                    sigma=trainer_params.get('sigma', 0.08),
+                    alpha=trainer_params.get('alpha', 0.04),
+                    n_workers=trainer_params.get('n_workers', 4),
+                )
                 trainer.start()
 
                 async def poll_stats():
@@ -360,74 +378,45 @@ async def websocket_endpoint(ws: WebSocket):
                         await ws.send_text(json.dumps({"policy_load_error": str(e)}))
                 else:
                     await ws.send_text(json.dumps({"error": "no NN controller to load"}))
-            elif action == "train_start":
-                # start online ES trainer using the current controller and sim
-                if controller is None or not hasattr(controller, 'get_flat_params'):
-                    await ws.send_text(json.dumps({"error": "controller must be NN-like to train"}))
-                else:
-                    # rollout uses a short episode on the same sim class
-                    def rollout():
-                        # make a temporary sim copy if possible; here we reuse sim for speed
-                        # perform a short episode
-                        total = 0.0
-                        steps = 100
-                        # reset sim if it has a reset method, otherwise continue
-                        for _ in range(steps):
-                            s = sim.get_state()
-                            a = controller.get_torque(s, target=0.0)
-                            sim.step(a)
-                            # reward: negative absolute angle of first link
-                            if "theta" in s:
-                                total -= abs(s["theta"]) 
-                            else:
-                                total -= abs(s.get("th1", 0.0))
-                        return total
+            elif action == "set_trainer_params":
+                # Update trainer hyperparameters live. If a trainer is running,
+                # update its attributes and (if needed) restart worker pool.
+                params = msg.get('params', {}) or {}
+                # allowed keys: population, sigma, alpha, steps, n_workers
+                try:
+                    # coerce numeric values
+                    for k in ('population', 'n_workers'):
+                        if k in params:
+                            trainer_params[k] = int(params[k])
+                    for k in ('sigma', 'alpha'):
+                        if k in params:
+                            trainer_params[k] = float(params[k])
+                    if 'steps' in params:
+                        trainer_params['steps'] = int(params['steps'])
 
-                    # create evaluator that calls the es_worker.evaluate_params in worker processes
-                    policy_kind = 'torch' if isinstance(controller, TorchNNPolicy) else 'numpy'
-                    if hasattr(controller, 'sizes'):
-                        hidden = tuple(controller.sizes[1:-1])
-                    else:
-                        hidden = (32, 32)
-
-                    def evaluator(flat: np.ndarray) -> float:
-                        # wrap es_worker.evaluate_params with required kwargs
-                        return es_worker.evaluate_params(flat, policy_kind, {'hidden_sizes': hidden},
-                                                          {'engine': engine, 'mode': start.mode, 'dt': start.dt}, steps=100)
-
-                    # policy_setter used to get/set current params in main process
-                    def policy_setter(new_theta):
-                        if new_theta is None:
-                            return controller.get_flat_params()
-                        else:
-                            controller.set_flat_params(np.array(new_theta))
-
-                    dim = controller.num_params()
-                    trainer = ESTrainer(evaluator, policy_setter, dim=dim, population=8, sigma=0.08, alpha=0.03, n_workers=4)
-                    trainer.start()
-                    await ws.send_text(json.dumps({"training": "started"}))
-
-                    # start an asyncio task to poll trainer.stats and forward to client
-                    async def poll_stats():
+                    # if a trainer is already running, update its attributes
+                    if trainer:
                         try:
-                            while trainer and trainer.running:
-                                await asyncio.sleep(0.5)
-                                try:
-                                    await ws.send_text(json.dumps({"training_stats": trainer.stats}))
-                                except Exception:
-                                    break
-                        except asyncio.CancelledError:
+                            trainer.population = trainer_params.get('population', trainer.population)
+                            trainer.sigma = trainer_params.get('sigma', trainer.sigma)
+                            trainer.alpha = trainer_params.get('alpha', trainer.alpha)
+                            # if worker count changed, recreate pool on next iteration
+                            new_workers = trainer_params.get('n_workers', trainer.n_workers)
+                            if getattr(trainer, 'n_workers', None) != new_workers:
+                                trainer.n_workers = new_workers
+                                if getattr(trainer, 'pool', None) is not None:
+                                    try:
+                                        trainer.pool.close()
+                                        trainer.pool.join()
+                                    except Exception:
+                                        pass
+                                    trainer.pool = None
+                        except Exception:
                             pass
 
-                    stats_poller = asyncio.create_task(poll_stats())
-            elif action == "train_stop":
-                if trainer:
-                    trainer.stop()
-                    trainer = None
-                    await ws.send_text(json.dumps({"training": "stopped"}))
-                if stats_poller:
-                    stats_poller.cancel()
-                    stats_poller = None
+                    await ws.send_text(json.dumps({"trainer_params": trainer_params}))
+                except Exception as e:
+                    await ws.send_text(json.dumps({"error": f"invalid trainer params: {e}"}))
             else:
                 await ws.send_text(json.dumps({"error": "unknown action"}))
 
