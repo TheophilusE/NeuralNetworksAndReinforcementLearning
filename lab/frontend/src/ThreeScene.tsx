@@ -253,6 +253,10 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
 
         let lastFpsTime = performance.now()
         let frames = 0
+        const POS_LERP = 0.22
+        const ROT_LERP = 0.22
+        const _tmpTargetPos = new THREE.Vector3()
+        const _tmpTargetQuat = new THREE.Quaternion()
 
         function applySceneUpdate(incoming: any) {
             if (!incoming || !incoming.bodies) return
@@ -303,7 +307,7 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
 
             // create meshes if new
             if (sceneRef.current) applySceneUpdate(sceneRef.current)
-            // update transforms
+            // update transforms (smoothed to avoid popping)
             const sc = sceneRef.current
             if (sc && sc.bodies) {
                 const bodyMapLocal = bodyMapRef.current
@@ -311,16 +315,48 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
                     const bid = body.body_id
                     const entry = bodyMapLocal.get(bid)
                     if (!entry) continue
-                    // if backend provides base pose, apply to group for organizational clarity
-                    if (body.base_position && body.base_position.length === 3) entry.group.position.set(body.base_position[0], body.base_position[1], body.base_position[2])
-                    if (body.base_orientation && body.base_orientation.length === 4) entry.group.quaternion.set(body.base_orientation[0], body.base_orientation[1], body.base_orientation[2], body.base_orientation[3])
+                    // if backend provides base pose, apply to group for organizational clarity (smooth update)
+                    if (body.base_position && body.base_position.length === 3) {
+                        _tmpTargetPos.set(body.base_position[0], body.base_position[1], body.base_position[2])
+                        if (!entry.group.userData._posInit) {
+                            entry.group.position.copy(_tmpTargetPos)
+                            entry.group.userData._posInit = true
+                        } else {
+                            entry.group.position.lerp(_tmpTargetPos, POS_LERP)
+                        }
+                    }
+                    if (body.base_orientation && body.base_orientation.length === 4) {
+                        _tmpTargetQuat.set(body.base_orientation[0], body.base_orientation[1], body.base_orientation[2], body.base_orientation[3])
+                        if (!entry.group.userData._quatInit) {
+                            entry.group.quaternion.copy(_tmpTargetQuat)
+                            entry.group.userData._quatInit = true
+                        } else {
+                            entry.group.quaternion.slerp(_tmpTargetQuat, ROT_LERP)
+                        }
+                    }
                     for (const link of body.links || []) {
                         const mesh = entry.links.get(link.link_index)
                         if (!mesh) continue
                         const wp = link.world_position
                         const wo = link.world_orientation
-                        if (wp && wp.length === 3) mesh.position.set(wp[0], wp[1], wp[2])
-                        if (wo && wo.length === 4) mesh.quaternion.set(wo[0], wo[1], wo[2], wo[3])
+                        if (wp && wp.length === 3) {
+                            _tmpTargetPos.set(wp[0], wp[1], wp[2])
+                            if (!mesh.userData._posInit) {
+                                mesh.position.copy(_tmpTargetPos)
+                                mesh.userData._posInit = true
+                            } else {
+                                mesh.position.lerp(_tmpTargetPos, POS_LERP)
+                            }
+                        }
+                        if (wo && wo.length === 4) {
+                            _tmpTargetQuat.set(wo[0], wo[1], wo[2], wo[3])
+                            if (!mesh.userData._quatInit) {
+                                mesh.quaternion.copy(_tmpTargetQuat)
+                                mesh.userData._quatInit = true
+                            } else {
+                                mesh.quaternion.slerp(_tmpTargetQuat, ROT_LERP)
+                            }
+                        }
                     }
                 }
                 // optional follow camera: move behind first link of first body
