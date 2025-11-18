@@ -53,42 +53,27 @@ async def websocket_endpoint(ws: WebSocket):
     # Auto-start a simulator when a client connects so the frontend receives
     # scene updates without requiring an explicit "start" message.
     try:
-        # Auto-start two sims/controllers in parallel: PID (a) and NN (b).
-        # Prefer PyBullet when available.
+        # Create a single short-lived simulator to provide an initial
+        # scene snapshot for the frontend. Avoid creating multiple sims
+        # here (they previously leaked and produced duplicate visuals).
         try:
-            # Use the ODE-based solver instead of PyBullet. The ODE solver is
-            # headless; the frontend is the primary visualizer.
-            sim_a = OdeCartPole(mode="single", dt=0.02)
-            sim_b = OdeCartPole(mode="single", dt=0.02)
-            engine = "ode"
+            try:
+                # prefer the ODE-based solver when available
+                temp_sim = OdeCartPole(mode="single", dt=0.02)
+                engine = "ode"
+            except Exception:
+                temp_sim = PendulumSimulator(mode="single", dt=0.02)
+                engine = "simple"
+
+            # try to reset to sensible defaults for snapshot
+            try:
+                if hasattr(temp_sim, 'reset'):
+                    temp_sim.reset()
+            except Exception:
+                pass
         except Exception:
-            # fallback to simple simulator if pybullet unavailable
-            sim_a = PendulumSimulator(mode="single", dt=0.02)
-            sim_b = PendulumSimulator(mode="single", dt=0.02)
+            temp_sim = None
             engine = "simple"
-
-        # PID controller for A, NN for B (torch preferred)
-        ctrl_a = PIDController(kp=30.0, ki=0.0, kd=2.0)
-        try:
-            ctrl_b = TorchNNPolicy()
-        except Exception:
-            ctrl_b = NNController()
-
-        # ensure fresh initial states
-        try:
-            if hasattr(sim_a, 'reset'):
-                sim_a.reset()
-            if hasattr(sim_b, 'reset'):
-                sim_b.reset()
-        except Exception:
-            pass
-        try:
-            if hasattr(ctrl_a, 'reset'):
-                ctrl_a.reset()
-            if hasattr(ctrl_b, 'reset'):
-                ctrl_b.reset()
-        except Exception:
-            pass
 
         # Helper to start an ESTrainer for a given controller if it looks NN-like
         # trainer_params is a mutable holder so the UI can update hyperparameters live.
@@ -155,32 +140,32 @@ async def websocket_endpoint(ws: WebSocket):
             except Exception:
                 pass
 
-        # Best-effort: align initial states
+        # Best-effort: align initial state for snapshot
         try:
-            if hasattr(sim_a, 'theta'):
-                sim_a.theta = 0.2
-                sim_b.theta = 0.2
+            if temp_sim is not None and hasattr(temp_sim, 'theta'):
+                temp_sim.theta = 0.2
         except Exception:
             pass
 
-        # Send initial scene from sim_a so the frontend can render a starting scene.
-        start_msg = StartMessage(action="start", mode=sim_a.mode, controller="pid", dt=sim_a.dt, target=0.0)
+        # Send initial scene from temp_sim so the frontend can render a starting scene.
+        if temp_sim is not None:
+            start_msg = StartMessage(action="start", mode=temp_sim.mode, controller="pid", dt=temp_sim.dt, target=0.0)
+        else:
+            start_msg = StartMessage(action="start", mode="single", controller="pid", dt=0.02, target=0.0)
         # per-connection reset counter to tag scene resets and session id for scene messages
         reset_counter = 0
         session_id = 0
         try:
-            if hasattr(sim_a, 'get_scene_tree'):
-                scene_tree = sim_a.get_scene_tree()
-                await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(sim_a, 'track_length', None), "session_id": session_id, "client_id": client_id}))
+            if temp_sim is not None and hasattr(temp_sim, 'get_scene_tree'):
+                scene_tree = temp_sim.get_scene_tree()
+                await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(temp_sim, 'track_length', None), "session_id": session_id, "client_id": client_id}))
         except Exception:
             pass
-        # Close temporary sims used only for initial scene snapshot so they
-        # don't linger and produce unexpected background activity.
+        # Close temporary simulator used only for initial scene snapshot so it
+        # doesn't linger and produce unexpected background activity.
         try:
-            if hasattr(sim_a, 'close'):
-                sim_a.close()
-            if hasattr(sim_b, 'close'):
-                sim_b.close()
+            if temp_sim is not None and hasattr(temp_sim, 'close'):
+                temp_sim.close()
         except Exception:
             pass
         # NOTE: do not auto-start a trainer here — trainer will be started
@@ -254,7 +239,7 @@ async def websocket_endpoint(ws: WebSocket):
                         # notify frontend to clear existing scene objects for a clean restart
                         try:
                             reset_counter += 1
-                            await ws.send_text(json.dumps({"scene_reset": True, "reset_id": reset_counter, "session_id": session_id}))
+                            await ws.send_text(json.dumps({"scene_reset": True, "reset_id": reset_counter, "session_id": session_id, "client_id": client_id}))
                         except Exception:
                             pass
                 except Exception:
