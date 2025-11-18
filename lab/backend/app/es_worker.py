@@ -39,7 +39,7 @@ def evaluate_params(flat_params: np.ndarray, policy_kind: str, policy_kwargs: di
         total = 0.0
         for _ in range(steps):
             s = sim.get_state()
-            a = policy.get_torque(s, target=0.0)
+            a = policy.get_torque(s, target=0.0, dt=dt)
             sim.step(a)
             if 'theta' in s:
                 total -= abs(s['theta'])

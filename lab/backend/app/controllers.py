@@ -36,20 +36,53 @@ class PIDController:
         return diff
 
     def get_torque(self, state, target=0.0):
+        # Accept an optional dt so the PID integrator/derivative are scaled correctly.
+        # Keep a default dt for backward compatibility with callers that don't pass it.
+        dt = 0.02
+        if isinstance(state, dict) and 'dt' in state:
+            try:
+                dt = float(state.get('dt', dt))
+            except Exception:
+                pass
+        # Prefer using measured angular velocity (theta_dot / w1) for derivative term
         if "theta" in state:
             err = self.angle_error(target, state["theta"])
-            self.integral += err
+            try:
+                self.integral += err * float(dt)
+            except Exception:
+                self.integral += err * 0.02
             deriv = 0.0
-            if self.last_error is not None:
-                deriv = err - self.last_error
+            if "theta_dot" in state and state.get("theta_dot") is not None:
+                try:
+                    deriv = -float(state.get("theta_dot"))
+                except Exception:
+                    deriv = 0.0
+            else:
+                if self.last_error is not None:
+                    try:
+                        deriv = (err - self.last_error) / float(dt)
+                    except Exception:
+                        deriv = err - self.last_error
             self.last_error = err
             return self.kp * err + self.ki * self.integral + self.kd * deriv
         else:
             err = self.angle_error(target, state.get("th1", 0.0))
-            self.integral += err
+            try:
+                self.integral += err * float(dt)
+            except Exception:
+                self.integral += err * 0.02
             deriv = 0.0
-            if self.last_error is not None:
-                deriv = err - self.last_error
+            if "w1" in state and state.get("w1") is not None:
+                try:
+                    deriv = -float(state.get("w1"))
+                except Exception:
+                    deriv = 0.0
+            else:
+                if self.last_error is not None:
+                    try:
+                        deriv = (err - self.last_error) / float(dt)
+                    except Exception:
+                        deriv = err - self.last_error
             self.last_error = err
             return self.kp * err + self.ki * self.integral + self.kd * deriv
 
@@ -79,7 +112,7 @@ class NNController:
         out = self.weights[-1].dot(a) + self.biases[-1]
         return float(out)
 
-    def get_torque(self, state, target=0.0) -> float:
+    def get_torque(self, state, target=0.0, dt: float = 0.02) -> float:
         if "theta" in state:
             err = np.array([target - state["theta"]])
         else:
@@ -140,7 +173,7 @@ class TorchNNPolicy:
         """No ephemeral state for Torch policy; API symmetry with PID."""
         return
 
-    def get_torque(self, state, target=0.0) -> float:
+    def get_torque(self, state, target=0.0, dt: float = 0.02) -> float:
         if "theta" in state:
             err = target - state["theta"]
         else:

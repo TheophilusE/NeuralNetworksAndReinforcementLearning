@@ -405,7 +405,7 @@ async def websocket_endpoint(ws: WebSocket):
                             while sim_obj.running and not stop_event.is_set():
                                 state = sim_obj.get_state()
                                 try:
-                                    torque = controller_obj.get_torque(state, target=start_msg.target)
+                                    torque = controller_obj.get_torque(state, target=start_msg.target, dt=getattr(sim_obj, 'dt', 0.02))
                                 except Exception:
                                     torque = 0.0
                                 try:
@@ -733,7 +733,7 @@ async def run_sim(ws: WebSocket, sim, controller, start, sim_session_id=None, cl
         while sim.running:
             # compute control
             state = sim.get_state()
-            torque = controller.get_torque(state, target=start.target)
+            torque = controller.get_torque(state, target=start.target, dt=getattr(sim, 'dt', 0.02))
             sim.step(torque)
             t += sim.dt
             msg = {
@@ -772,11 +772,11 @@ async def run_contest(ws: WebSocket, sim_a, sim_b, ctrl_a, ctrl_b, target=0.0):
             state_a = sim_a.get_state()
             state_b = sim_b.get_state()
             try:
-                tau_a = ctrl_a.get_torque(state_a, target=target)
+                tau_a = ctrl_a.get_torque(state_a, target=target, dt=getattr(sim_a, 'dt', 0.02))
             except Exception:
                 tau_a = 0.0
             try:
-                tau_b = ctrl_b.get_torque(state_b, target=target)
+                tau_b = ctrl_b.get_torque(state_b, target=target, dt=getattr(sim_b, 'dt', 0.02))
             except Exception:
                 tau_b = 0.0
 
