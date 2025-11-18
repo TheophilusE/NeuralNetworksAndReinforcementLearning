@@ -7,11 +7,13 @@ import torch.nn.functional as F
 
 
 class PIDController:
-    def __init__(self, kp=30.0, ki=0.0, kd=2.0):
+    def __init__(self, kp=30.0, ki=0.0, kd=2.0, max_output: float = 50.0):
         # sensible defaults chosen to provide stable baseline behavior
         self.kp = kp
         self.ki = ki
         self.kd = kd
+        # maximum absolute control output (force applied to cart)
+        self.max_output = float(max_output)
         self.integral = 0.0
         self.last_error = None
 
@@ -53,10 +55,11 @@ class PIDController:
         # Prefer using measured angular velocity (theta_dot / w1) for derivative term
         if "theta" in state:
             err = self.angle_error(target, state["theta"])
+            # compute prospective integral (anti-windup: only commit if not saturating)
             try:
-                self.integral += err * float(dt)
+                prospective_integral = self.integral + err * float(dt)
             except Exception:
-                self.integral += err * 0.02
+                prospective_integral = self.integral + err * 0.02
             deriv = 0.0
             if "theta_dot" in state and state.get("theta_dot") is not None:
                 try:
@@ -69,14 +72,25 @@ class PIDController:
                         deriv = (err - self.last_error) / float(dt)
                     except Exception:
                         deriv = err - self.last_error
+            # compute raw output using prospective integral
+            raw = self.kp * err + self.ki * prospective_integral + self.kd * deriv
+            # apply saturation and anti-windup: only commit integral if raw not saturated
+            if abs(raw) <= self.max_output:
+                self.integral = prospective_integral
+            # remember last error for derivative computation next step
             self.last_error = err
-            return self.kp * err + self.ki * self.integral + self.kd * deriv
+            # clamp output
+            if raw > self.max_output:
+                return self.max_output
+            if raw < -self.max_output:
+                return -self.max_output
+            return raw
         else:
             err = self.angle_error(target, state.get("th1", 0.0))
             try:
-                self.integral += err * float(dt)
+                prospective_integral = self.integral + err * float(dt)
             except Exception:
-                self.integral += err * 0.02
+                prospective_integral = self.integral + err * 0.02
             deriv = 0.0
             if "w1" in state and state.get("w1") is not None:
                 try:
@@ -89,8 +103,15 @@ class PIDController:
                         deriv = (err - self.last_error) / float(dt)
                     except Exception:
                         deriv = err - self.last_error
+            raw = self.kp * err + self.ki * prospective_integral + self.kd * deriv
+            if abs(raw) <= self.max_output:
+                self.integral = prospective_integral
             self.last_error = err
-            return self.kp * err + self.ki * self.integral + self.kd * deriv
+            if raw > self.max_output:
+                return self.max_output
+            if raw < -self.max_output:
+                return -self.max_output
+            return raw
 
 
 class NNController:
