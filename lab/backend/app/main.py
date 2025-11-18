@@ -76,8 +76,9 @@ async def websocket_endpoint(ws: WebSocket):
         start_msg = StartMessage(action="start", mode=sim_a.mode, controller="pid", dt=sim_a.dt, target=0.0)
         asyncio.create_task(run_contest(ws, sim_a, sim_b, ctrl_a, ctrl_b, target=0.0))
         try:
-            if hasattr(sim_a, 'get_scene_tree'):
-                await ws.send_text(json.dumps({"scene": sim_a.get_scene_tree()}))
+                if hasattr(sim_a, 'get_scene_tree'):
+                    scene_tree = sim_a.get_scene_tree()
+                    await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(sim_a, 'track_length', None)}))
         except Exception:
             pass
     except Exception:
