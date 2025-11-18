@@ -255,6 +255,9 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
         let frames = 0
         const POS_LERP = 0.22
         const ROT_LERP = 0.22
+        // snap thresholds to avoid long lerps after a reset or large teleport
+        const SNAP_DIST = 0.5 // meters
+        const SNAP_ANGLE = Math.PI / 2 // radians
         const _tmpTargetPos = new THREE.Vector3()
         const _tmpTargetQuat = new THREE.Quaternion()
 
@@ -342,20 +345,34 @@ export default function ThreeScene({ state, scene, onFps, currentTrack }: any) {
                         if (wp && wp.length === 3) {
                             _tmpTargetPos.set(wp[0], wp[1], wp[2])
                             if (!mesh.userData._posInit) {
-                                mesh.position.copy(_tmpTargetPos)
-                                mesh.userData._posInit = true
-                            } else {
-                                mesh.position.lerp(_tmpTargetPos, POS_LERP)
-                            }
+                                    mesh.position.copy(_tmpTargetPos)
+                                    mesh.userData._posInit = true
+                                } else {
+                                    // if target is far from current position (e.g. a reset), snap immediately
+                                    const dist = mesh.position.distanceTo(_tmpTargetPos)
+                                    const dynamicSnap = (typeof currentTrack === 'number' && currentTrack > 0) ? Math.min(SNAP_DIST, currentTrack * 0.25) : SNAP_DIST
+                                    if (dist > dynamicSnap) {
+                                        mesh.position.copy(_tmpTargetPos)
+                                    } else {
+                                        mesh.position.lerp(_tmpTargetPos, POS_LERP)
+                                    }
+                                }
                         }
                         if (wo && wo.length === 4) {
                             _tmpTargetQuat.set(wo[0], wo[1], wo[2], wo[3])
                             if (!mesh.userData._quatInit) {
-                                mesh.quaternion.copy(_tmpTargetQuat)
-                                mesh.userData._quatInit = true
-                            } else {
-                                mesh.quaternion.slerp(_tmpTargetQuat, ROT_LERP)
-                            }
+                                    mesh.quaternion.copy(_tmpTargetQuat)
+                                    mesh.userData._quatInit = true
+                                } else {
+                                    // measure quaternion difference and snap for large rotations
+                                    const dot = Math.abs(mesh.quaternion.dot(_tmpTargetQuat))
+                                    const angle = 2 * Math.acos(Math.min(1, dot))
+                                    if (angle > SNAP_ANGLE) {
+                                        mesh.quaternion.copy(_tmpTargetQuat)
+                                    } else {
+                                        mesh.quaternion.slerp(_tmpTargetQuat, ROT_LERP)
+                                    }
+                                }
                         }
                     }
                 }

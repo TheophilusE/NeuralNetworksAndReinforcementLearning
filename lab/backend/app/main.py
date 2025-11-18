@@ -153,20 +153,18 @@ async def websocket_endpoint(ws: WebSocket):
         except Exception:
             pass
 
-        # Start parallel run and send scene from sim_a if available
+        # Send initial scene from sim_a so the frontend can render a starting scene.
         start_msg = StartMessage(action="start", mode=sim_a.mode, controller="pid", dt=sim_a.dt, target=0.0)
-        asyncio.create_task(run_contest(ws, sim_a, sim_b, ctrl_a, ctrl_b, target=0.0))
         try:
-                if hasattr(sim_a, 'get_scene_tree'):
-                    scene_tree = sim_a.get_scene_tree()
-                    await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(sim_a, 'track_length', None)}))
+            if hasattr(sim_a, 'get_scene_tree'):
+                scene_tree = sim_a.get_scene_tree()
+                await ws.send_text(json.dumps({"scene": scene_tree, "track_length": getattr(sim_a, 'track_length', None)}))
         except Exception:
             pass
-        # Start trainer automatically for ctrl_b if it's an NN controller
-        try:
-            start_trainer_for(ctrl_b, sim_b, start_msg)
-        except Exception:
-            pass
+        # NOTE: do not auto-start a trainer here — trainer will be started
+        # when the client explicitly requests NN controller via the `start`
+        # action. Starting a trainer on connect and again on `start` caused
+        # duplicate trainers and duplicate training_stats streams.
     except Exception:
         # If auto-start fails, continue and allow explicit start messages
         sim = None
