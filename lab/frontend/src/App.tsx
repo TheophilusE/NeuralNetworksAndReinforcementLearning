@@ -180,10 +180,27 @@ function AppInner() {
   }
 
   const sendPidUpdate = (p: { kp?: number; ki?: number; kd?: number }) => {
-    setPidParams((cur) => ({ ...cur, ...p }))
-    if (!ws) return
-    ws.send(JSON.stringify({ action: 'control', type: 'pid', params: { ...pidParams, ...p } }))
+    // Compute new params synchronously so the message uses the intended values
+    const newParams = { ...pidParams, ...p }
+    setPidParams(newParams)
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ action: 'control', type: 'pid', params: newParams }))
+    } catch (e) {
+      console.warn('failed to send pid control update', e)
+    }
   }
+
+  // When switching to PID controller, push current PID params to the backend
+  useEffect(() => {
+    if (!ws || controller !== 'pid') return
+    if (ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ action: 'control', type: 'pid', params: pidParams }))
+    } catch (e) {
+      console.warn('failed to send pid params on controller switch', e)
+    }
+  }, [controller, ws])
 
   const savePolicy = (name?: string) => {
     if (!ws) return

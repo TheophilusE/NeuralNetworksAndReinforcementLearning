@@ -7,7 +7,8 @@ import torch.nn.functional as F
 
 
 class PIDController:
-    def __init__(self, kp=10.0, ki=0.0, kd=1.0):
+    def __init__(self, kp=30.0, ki=0.0, kd=2.0):
+        # sensible defaults chosen to provide stable baseline behavior
         self.kp = kp
         self.ki = ki
         self.kd = kd
@@ -35,13 +36,18 @@ class PIDController:
             diff += 2 * math.pi
         return diff
 
-    def get_torque(self, state, target=0.0):
+    def get_torque(self, state, target=0.0, dt: float = 0.02):
         # Accept an optional dt so the PID integrator/derivative are scaled correctly.
-        # Keep a default dt for backward compatibility with callers that don't pass it.
-        dt = 0.02
+        # Prefer the explicit `dt` argument provided by callers; fall back to state['dt'] if present.
+        try:
+            dt = float(dt)
+        except Exception:
+            dt = 0.02
         if isinstance(state, dict) and 'dt' in state:
             try:
-                dt = float(state.get('dt', dt))
+                # If caller didn't provide a usable dt, use the state's dt
+                if not isinstance(dt, float) or dt <= 0:
+                    dt = float(state.get('dt', dt))
             except Exception:
                 pass
         # Prefer using measured angular velocity (theta_dot / w1) for derivative term
