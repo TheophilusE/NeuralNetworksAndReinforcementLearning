@@ -215,7 +215,7 @@ export default function UIOverlay({
             <div style={{ fontSize: 12, marginBottom: 6 }}>Training Status</div>
             <div>Running: {trainingStats ? String(trainingStats.running ?? true) : 'unknown'}</div>
             <div>Iter: {trainingStats ? String(trainingStats.iter ?? '-') : '-'}</div>
-            <div>Last reward: {trainingStats && typeof trainingStats.last_reward !== 'undefined' ? trainingStats.last_reward.toFixed(3) : '-'}</div>
+            <div>Last reward: {trainingStats && typeof trainingStats.last_reward === 'number' ? trainingStats.last_reward.toFixed(3) : '-'}</div>
             <div style={{ marginTop: 8 }}>
               <small>Reward history</small>
               <div style={{ width: 200, height: 48, marginTop: 6 }}>

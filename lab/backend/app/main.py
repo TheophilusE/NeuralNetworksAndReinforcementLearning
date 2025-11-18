@@ -117,7 +117,9 @@ async def websocket_endpoint(ws: WebSocket):
                         while trainer and trainer.running:
                             await asyncio.sleep(0.5)
                             try:
-                                await ws.send_text(json.dumps({"training_stats": trainer.stats}))
+                                stats = dict(trainer.stats)
+                                stats['running'] = bool(trainer.running)
+                                await ws.send_text(json.dumps({"training_stats": stats}))
                             except Exception:
                                 break
                     except asyncio.CancelledError:

@@ -42,9 +42,31 @@ class ESTrainer:
 
         # evaluate in parallel
         if self.n_workers > 1:
-            if self.pool is None:
-                self.pool = mp.Pool(processes=min(self.n_workers, N))
-            rewards = self.pool.map(self.evaluator, thetas)
+            try:
+                if self.pool is None:
+                    # creating a multiprocessing Pool can fail on some platforms
+                    # when evaluator is a nested function (not picklable). Try
+                    # to create the pool and map; on failure fall back to
+                    # sequential evaluation to ensure progress.
+                    self.pool = mp.Pool(processes=min(self.n_workers, N))
+                rewards = self.pool.map(self.evaluator, thetas)
+            except Exception as e:
+                try:
+                    if self.pool is not None:
+                        try:
+                            self.pool.close()
+                            self.pool.join()
+                        except Exception:
+                            pass
+                        self.pool = None
+                except Exception:
+                    pass
+                # fallback to sequential evaluation in current process
+                try:
+                    rewards = [self.evaluator(t) for t in thetas]
+                except Exception:
+                    # if evaluation fails entirely, produce -inf rewards
+                    rewards = np.full((N,), -1e6)
         else:
             rewards = [self.evaluator(t) for t in thetas]
 
