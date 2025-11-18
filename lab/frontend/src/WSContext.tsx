@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
+import { WS_URL, HEALTH_URL } from './api'
 
 // Module-scoped singleton socket - ensures one socket per page
 let globalSock: WebSocket | null = null
@@ -17,7 +18,7 @@ export const WSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const ensureSocket = async () => {
       // quick health check before creating socket
       try {
-        const res = await fetch('http://localhost:8000/health', { cache: 'no-store' })
+        const res = await fetch(HEALTH_URL, { cache: 'no-store' })
         if (!res.ok) throw new Error('health check failed')
       } catch (err) {
         // backend not ready; retry
@@ -29,7 +30,7 @@ export const WSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         if (globalSock && globalSock.readyState !== WebSocket.CLOSED && globalSock.readyState !== WebSocket.CLOSING) {
           setWs(globalSock)
         } else {
-          globalSock = new WebSocket('ws://localhost:8000/ws')
+          globalSock = new WebSocket(WS_URL)
           setWs(globalSock)
         }
       } catch (e) {

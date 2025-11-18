@@ -8,6 +8,7 @@ from .controllers import PIDController, NNController, TorchNNPolicy
 import numpy as np
 from .trainer import ESTrainer
 from . import es_worker
+from functools import partial
 import asyncio
 import json
 from pathlib import Path
@@ -223,15 +224,16 @@ async def websocket_endpoint(ws: WebSocket):
             # determine input dim for policy reconstruction (NNController/TorchNNPolicy)
             input_dim = getattr(controller_obj, 'input_dim', 1)
 
-            # evaluator reads trainer_params['steps'] so updates can take effect live
-            def evaluator(flat: np.ndarray) -> float:
-                return es_worker.evaluate_params(
-                    flat,
-                    policy_kind,
-                    {'hidden_sizes': hidden, 'input_dim': input_dim},
-                    {'engine': engine, 'mode': start_msg_local.mode, 'dt': start_msg_local.dt, 'track_length': getattr(sim_obj, 'track_length', 2.0)},
-                    steps=trainer_params.get('steps', 100),
-                )
+            # Build a picklable evaluator using functools.partial so it can be
+            # used with multiprocessing.Pool.map. Pass policy and sim kwargs
+            # as plain dicts (pickle-friendly).
+            evaluator = partial(
+                es_worker.evaluate_params,
+                policy_kind=policy_kind,
+                policy_kwargs={'hidden_sizes': hidden, 'input_dim': input_dim},
+                sim_kwargs={'engine': engine, 'mode': start_msg_local.mode, 'dt': start_msg_local.dt, 'track_length': getattr(sim_obj, 'track_length', 2.0)},
+                steps=trainer_params.get('steps', 100),
+            )
 
             def policy_setter(new_theta):
                 if new_theta is None:

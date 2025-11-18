@@ -116,6 +116,11 @@ class NNController:
         self.max_output = float(max_output)
         self.last_error = 0.0
         self.integral = 0.0
+        # output smoothing and anti-jerk defaults
+        self.last_output = 0.0
+        self.smoothing_alpha = 0.3  # EMA alpha for action smoothing (0..1)
+        self.angle_deadband = 0.02  # radians; small-angle deadband to avoid jitter
+        self.deriv_deadband = 0.01  # rad/s; angular rate deadband
         # limit the integral term to avoid wind-up / numerical blowups over long runs
         self.integral_limit = float(10.0)
         self.hidden_sizes = tuple(hidden_sizes)
@@ -134,6 +139,7 @@ class NNController:
     def reset(self):
         self.last_error = 0.0
         self.integral = 0.0
+        self.last_output = 0.0
 
     def _forward(self, x: np.ndarray) -> float:
         a = x.astype(np.float32)
@@ -191,9 +197,43 @@ class NNController:
         # tiny deadband to avoid tiny jitter
         if abs(raw) < 1e-3:
             raw = 0.0
-        # clamp
-        torque = max(-self.max_output, min(self.max_output, raw))
-        return float(torque)
+
+        # small-angle deadband: if nearly upright and low angular rate, avoid acting
+        try:
+            if abs(err) < self.angle_deadband and abs(deriv) < self.deriv_deadband:
+                raw = 0.0
+        except Exception:
+            pass
+
+        # guard against NaN/inf from network
+        if not np.isfinite(raw):
+            raw = 0.0
+
+        # clamp immediate raw output
+        raw = max(-self.max_output, min(self.max_output, raw))
+
+        # smooth actions to avoid sudden jerks: EMA with respect to last_output
+        try:
+            smoothed = float(self.smoothing_alpha * raw + (1.0 - self.smoothing_alpha) * self.last_output)
+        except Exception:
+            smoothed = float(raw)
+
+        # rate-limit change based on dt (allow proportionally small change per step)
+        try:
+            max_delta = float(self.max_output) * 0.5 * float(dt_f)
+        except Exception:
+            max_delta = float(self.max_output) * 0.5 * 0.02
+        delta = smoothed - float(self.last_output)
+        if delta > max_delta:
+            out = float(self.last_output + max_delta)
+        elif delta < -max_delta:
+            out = float(self.last_output - max_delta)
+        else:
+            out = float(smoothed)
+
+        # commit last_output and return
+        self.last_output = out
+        return float(out)
 
     def get_flat_params(self) -> np.ndarray:
         parts = []
@@ -269,6 +309,11 @@ class TorchNNPolicy:
         self.device = torch.device(device)
         layers = []
         in_dim = int(input_dim)
+        # smoothing and anti-jerk defaults for torch policy as well
+        self.last_output = 0.0
+        self.smoothing_alpha = 0.3
+        self.angle_deadband = 0.02
+        self.deriv_deadband = 0.01
         for h in hidden_sizes:
             layers.append(nn.Linear(in_dim, h))
             layers.append(nn.Tanh())
@@ -288,6 +333,7 @@ class TorchNNPolicy:
         # stateful signals to mirror PID inputs
         self.integral = 0.0
         self.last_error = 0.0
+        self.last_output = 0.0
         # prevent integrator wind-up and numeric explosion
         self.integral_limit = float(10.0)
 
@@ -342,7 +388,9 @@ class TorchNNPolicy:
             arr = np.pad(arr, (0, expected - arr.size), 'constant')
         elif arr.size > expected:
             arr = arr[:expected]
-        obs = torch.tensor([arr], dtype=torch.float32, device=self.device)
+        # convert efficiently: make a contiguous numpy float32 array then convert
+        arr_np = np.asarray(arr, dtype=np.float32)
+        obs = torch.from_numpy(arr_np.reshape(1, -1)).to(self.device)
 
         with torch.no_grad():
             out = self.model(obs)
@@ -353,6 +401,38 @@ class TorchNNPolicy:
         # deadband to ignore tiny outputs
         if abs(raw) < 1e-4:
             raw = 0.0
+
+        # small-angle deadband
+        try:
+            if abs(err) < self.angle_deadband and abs(deriv) < self.deriv_deadband:
+                raw = 0.0
+        except Exception:
+            pass
+
+        # clamp raw
+        raw = max(-self.max_output, min(self.max_output, raw))
+
+        # smooth actions
+        try:
+            smoothed = float(self.smoothing_alpha * raw + (1.0 - self.smoothing_alpha) * self.last_output)
+        except Exception:
+            smoothed = float(raw)
+
+        # rate limit change
+        try:
+            max_delta = float(self.max_output) * 0.5 * float(dt_f)
+        except Exception:
+            max_delta = float(self.max_output) * 0.5 * 0.02
+        delta = smoothed - float(self.last_output)
+        if delta > max_delta:
+            out = float(self.last_output + max_delta)
+        elif delta < -max_delta:
+            out = float(self.last_output - max_delta)
+        else:
+            out = float(smoothed)
+
+        self.last_output = out
+        return out
         if abs(raw) > getattr(self, 'max_output', float('inf')):
             return float(self.max_output if raw > 0 else -self.max_output)
         return raw
