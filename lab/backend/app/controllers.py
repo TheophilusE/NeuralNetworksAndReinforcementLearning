@@ -14,6 +14,11 @@ class PIDController:
         self.integral = 0.0
         self.last_error = None
 
+    def reset(self):
+        """Reset controller internal state (integrator, derivative memory)."""
+        self.integral = 0.0
+        self.last_error = None
+
     def set_params(self, kp=None, ki=None, kd=None):
         if kp is not None:
             self.kp = float(kp)
@@ -61,6 +66,11 @@ class NNController:
         self.sizes = [1] + list(hidden_sizes) + [1]
         self.weights: List[np.ndarray] = [np.random.randn(a, b) * 0.1 for a, b in zip(self.sizes[1:], self.sizes[:-1])]
         self.biases: List[np.ndarray] = [np.zeros((a,)) for a in self.sizes[1:]]
+
+    def reset(self):
+        """No ephemeral state for NN controller; present for API symmetry."""
+        # intentionally a no-op: NN controller state is captured entirely in params
+        return
 
     def _forward(self, x: np.ndarray) -> float:
         a = x
@@ -125,6 +135,10 @@ class TorchNNPolicy:
             in_dim = h
         layers.append(nn.Linear(in_dim, 1))
         self.model = nn.Sequential(*layers).to(self.device)
+
+    def reset(self):
+        """No ephemeral state for Torch policy; API symmetry with PID."""
+        return
 
     def get_torque(self, state, target=0.0) -> float:
         if "theta" in state:

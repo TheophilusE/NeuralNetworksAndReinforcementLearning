@@ -53,6 +53,19 @@ class PendulumSimulator:
                 "w2": self.theta2_dot,
             }
 
+    def reset(self):
+        """Reset simulator state to a consistent initial condition (upright small angle)."""
+        self.x = 0.0
+        self.x_dot = 0.0
+        if self.mode == "single":
+            self.theta = 0.05
+            self.theta_dot = 0.0
+        else:
+            self.theta1 = 0.05
+            self.theta2 = -0.02
+            self.theta1_dot = 0.0
+            self.theta2_dot = 0.0
+
     def step(self, force=0.0):
         # apply force to cart and integrate dynamics
         if self.mode == "single":

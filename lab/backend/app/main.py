@@ -64,6 +64,22 @@ async def websocket_endpoint(ws: WebSocket):
         except Exception:
             ctrl_b = NNController()
 
+        # ensure fresh initial states
+        try:
+            if hasattr(sim_a, 'reset'):
+                sim_a.reset()
+            if hasattr(sim_b, 'reset'):
+                sim_b.reset()
+        except Exception:
+            pass
+        try:
+            if hasattr(ctrl_a, 'reset'):
+                ctrl_a.reset()
+            if hasattr(ctrl_b, 'reset'):
+                ctrl_b.reset()
+        except Exception:
+            pass
+
         # Helper to start an ESTrainer for a given controller if it looks NN-like
         # trainer_params is a mutable holder so the UI can update hyperparameters live.
         trainer_params = {"population": 12, "sigma": 0.08, "alpha": 0.04, "steps": 100, "n_workers": 4}
@@ -202,6 +218,13 @@ async def websocket_endpoint(ws: WebSocket):
                         else:
                             sim = PendulumSimulator(mode=start.mode, dt=start.dt)
 
+                # ensure sim is reset to a clean start state
+                try:
+                    if hasattr(sim, 'reset'):
+                        sim.reset()
+                except Exception:
+                    pass
+
                 # stop any existing trainer; if the new controller is NN we'll start a fresh trainer below
                 if trainer:
                     try:
@@ -224,6 +247,11 @@ async def websocket_endpoint(ws: WebSocket):
                             controller.set_params(kp=start.kp, ki=start.ki, kd=start.kd)
                     except Exception:
                         pass
+                try:
+                    if hasattr(controller, 'reset'):
+                        controller.reset()
+                except Exception:
+                    pass
                 else:
                     # allow choosing torch or numpy NN implementation
                     nn_framework = msg.get('nn_framework', 'numpy')
@@ -239,6 +267,12 @@ async def websocket_endpoint(ws: WebSocket):
                             await ws.send_text(json.dumps({"policy_loaded": str(default_path)}))
                         except Exception as e:
                             await ws.send_text(json.dumps({"policy_load_error": str(e)}))
+
+                try:
+                    if hasattr(controller, 'reset'):
+                        controller.reset()
+                except Exception:
+                    pass
 
                 # run simulation loop in a pooled worker thread so the asyncio
                 # loop is not blocked; the thread will push telemetry into an
@@ -383,6 +417,17 @@ async def websocket_endpoint(ws: WebSocket):
                     path = policies_dir / f"{name}.npz"
                     try:
                         controller.load(str(path))
+                        # reset sim and controller after loading a policy to ensure clean start
+                        try:
+                            if sim is not None and hasattr(sim, 'reset'):
+                                sim.reset()
+                        except Exception:
+                            pass
+                        try:
+                            if hasattr(controller, 'reset'):
+                                controller.reset()
+                        except Exception:
+                            pass
                         await ws.send_text(json.dumps({"policy_loaded": str(path)}))
                     except Exception as e:
                         await ws.send_text(json.dumps({"policy_load_error": str(e)}))
@@ -390,6 +435,16 @@ async def websocket_endpoint(ws: WebSocket):
                     path = policies_dir / f"{name}.pt"
                     try:
                         controller.load(str(path))
+                        try:
+                            if sim is not None and hasattr(sim, 'reset'):
+                                sim.reset()
+                        except Exception:
+                            pass
+                        try:
+                            if hasattr(controller, 'reset'):
+                                controller.reset()
+                        except Exception:
+                            pass
                         await ws.send_text(json.dumps({"policy_loaded": str(path)}))
                     except Exception as e:
                         await ws.send_text(json.dumps({"policy_load_error": str(e)}))

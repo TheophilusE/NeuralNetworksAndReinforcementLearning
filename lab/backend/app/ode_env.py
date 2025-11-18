@@ -30,6 +30,13 @@ class OdeCartPole:
             self.state = np.array([0.0, 0.0, 0.2, 0.0, 0.0, 0.0], dtype=float)
         self.running = False
 
+    def reset(self):
+        """Reset state to consistent initial condition (upright small angle)."""
+        if self.mode == "single":
+            self.state = np.array([0.0, 0.0, 0.2, 0.0], dtype=float)
+        else:
+            self.state = np.array([0.0, 0.0, 0.2, 0.0, 0.0, 0.0], dtype=float)
+
     def _dynamics_single(self, s, u):
         # s = [x, x_dot, th, th_dot]
         x, x_dot, th, th_dot = s
