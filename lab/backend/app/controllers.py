@@ -54,7 +54,8 @@ class PIDController:
                 pass
         # Prefer using measured angular velocity (theta_dot / w1) for derivative term
         if "theta" in state:
-            err = self.angle_error(target, state["theta"])
+            # compute error as current - target so positive angle -> positive control
+            err = self.angle_error(state["theta"], target)
             # compute prospective integral (anti-windup: only commit if not saturating)
             try:
                 prospective_integral = self.integral + err * float(dt)
@@ -86,7 +87,7 @@ class PIDController:
                 return -self.max_output
             return raw
         else:
-            err = self.angle_error(target, state.get("th1", 0.0))
+            err = self.angle_error(state.get("th1", 0.0), target)
             try:
                 prospective_integral = self.integral + err * float(dt)
             except Exception:
@@ -140,10 +141,11 @@ class NNController:
         return float(out)
 
     def get_torque(self, state, target=0.0, dt: float = 0.02) -> float:
+        # Use current - target so positive pendulum angle -> positive action
         if "theta" in state:
-            err = np.array([target - state["theta"]])
+            err = np.array([state["theta"] - target])
         else:
-            err = np.array([target - state.get("th1", 0.0)])
+            err = np.array([state.get("th1", 0.0) - target])
         return self._forward(err)
 
     # Parameter helpers for evolutionary updates
@@ -201,10 +203,11 @@ class TorchNNPolicy:
         return
 
     def get_torque(self, state, target=0.0, dt: float = 0.02) -> float:
+        # Use current - target so positive pendulum angle -> positive action
         if "theta" in state:
-            err = target - state["theta"]
+            err = state["theta"] - target
         else:
-            err = target - state.get("th1", 0.0)
+            err = state.get("th1", 0.0) - target
         x = torch.tensor([[err]], dtype=torch.float32, device=self.device)
         with torch.no_grad():
             out = self.model(x)
