@@ -32,6 +32,6 @@ Example start message (JSON over websocket):
 
 The websocket will stream back periodic JSON state updates.
 
-Note: This backend uses a very simple physics integrator for demonstration. For
-realistic simulations prefer enabling PyBullet and writing a pybullet-based
-environment implementation.
+```
+$ uvicorn app.main:app --reload --host localhost --port 8000
+```
